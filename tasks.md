@@ -25,7 +25,7 @@
 ## Context Engine
 - [ ] Context builder
 - [ ] Token estimator
-- [ ] Export markdown/json
+- [x] Export markdown/json ✓ (committed in feat/T16-context-exporter-cli)
 
 ## AI Layer
 - [ ] Provider abstraction
