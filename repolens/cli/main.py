@@ -10,9 +10,11 @@ from typing import Optional
 import typer
 
 from repolens import config
+from repolens.classification.classifier import classify_file, score_file
 from repolens.db.repository import (
     create_repo,
     get_repo,
+    list_files,
     list_repos as db_list_repos,
     upsert_file,
 )
@@ -114,12 +116,88 @@ def scan(
     typer.echo(f"[stub] scan {repo}")
 
 
+def _resolve_repo(conn: sqlite3.Connection, repo: str) -> dict:
+    """Resolve a repo argument (int ID, name, or path) to a repo row.
+
+    Tries integer ID first, then falls back to path/name lookup via get_repo.
+    Exits with an error message if not found.
+    """
+    # Try int ID
+    try:
+        repo_id = int(repo)
+        row = get_repo(conn, repo_id)
+    except ValueError:
+        row = None
+
+    # Fall back to path/name lookup
+    if row is None:
+        row = get_repo(conn, repo)
+
+    if row is None:
+        typer.echo(f"Error: repository not found: {repo!r}", err=True)
+        typer.echo("Run 'repolens list' to see tracked repositories.", err=True)
+        raise typer.Exit(1)
+
+    return dict(row)
+
+
 @app.command()
 def classify(
     repo: str = typer.Argument(..., help="Repo ID, name, or path."),
 ) -> None:
-    """Re-run classification and scoring on all files."""
-    typer.echo(f"[stub] classify {repo}")
+    """Classify and score every file in a repository."""
+    init_db()
+    conn = _open_conn()
+    try:
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+        repo_name: str = repo_row["name"]
+
+        files = list_files(conn, repo_id)
+        if not files:
+            typer.echo(f"No files found for repo {repo_name!r}. Run 'repolens ingest' first.")
+            return
+
+        category_counts: dict[str, int] = {}
+        scored: list[tuple[float, str]] = []
+
+        for f in files:
+            relative_path: str = f["path"]
+            extension: str = f.get("extension") or ""
+            size_bytes: int = f.get("size_bytes") or 0
+            mtime: int = f.get("mtime") or 0
+
+            category = classify_file(relative_path, extension)
+            score = score_file(relative_path, category, size_bytes, mtime)
+
+            upsert_file(
+                conn,
+                repo_id,
+                relative_path,
+                classification=category,
+                importance_score=score,
+            )
+
+            category_counts[category] = category_counts.get(category, 0) + 1
+            scored.append((score, relative_path))
+
+    finally:
+        conn.close()
+
+    total = len(scored)
+    typer.echo(f"\nClassified {total} files in {repo_name!r}\n")
+
+    typer.echo("Category breakdown:")
+    for cat in ("core", "config", "test", "docs", "build", "generated", "other"):
+        count = category_counts.get(cat, 0)
+        if count:
+            bar = "#" * min(count, 40)
+            typer.echo(f"  {cat:<12} {count:>4}  {bar}")
+
+    top5 = sorted(scored, key=lambda x: x[0], reverse=True)[:5]
+    typer.echo("\nTop 5 files by importance score:")
+    for score, path in top5:
+        typer.echo(f"  {score:.4f}  {path}")
 
 
 @app.command()

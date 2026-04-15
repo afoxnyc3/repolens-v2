@@ -76,3 +76,12 @@ dir_summarizer and repo_summarizer implemented with cache hit/miss. 55 tests pas
 ## 2026-04-15T16:39:56.984056+00:00 | T15 → done
 22 tests, 283 total passing. Budget enforcement verified (<= budget*1.05). Summary fallback for oversized/missing files. file_paths tracks only full-content inclusions. list_summaries_by_scope added to repository.py.
 
+## 2026-04-15T16:41:08.541644+00:00 | T17 → in_progress
+
+
+## 2026-04-15T16:43:00.839282+00:00 | T08 → in_progress
+
+
+## 2026-04-15T16:43:50.173975+00:00 | T08 → done
+classify command wired to classifier.py/score_file; resolves repo by int ID or path; upserts classification+importance_score per file; prints category counts + top 5 by score
+
