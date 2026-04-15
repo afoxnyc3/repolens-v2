@@ -421,7 +421,7 @@ tasks:
   - repolens/ai/executor.py
 - id: T18
   title: CLI run command
-  status: todo
+  status: done
   depends_on:
   - T16
   - T17
