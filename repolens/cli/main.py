@@ -21,6 +21,7 @@ from repolens.db.repository import (
     get_repo,
     list_files,
     list_repos as db_list_repos,
+    list_runs as db_list_runs,
     list_summaries_by_scope,
     save_bundle,
     upsert_file,
@@ -426,24 +427,86 @@ def status(
     repo: Optional[str] = typer.Argument(None, help="Repo ID, name, or path (omit for all)."),
 ) -> None:
     """Show repo stats: file count, classification breakdown, summary coverage."""
-    typer.echo("[stub] status")
-
-
-@app.command(name="list")
-def list_repos() -> None:
-    """List all tracked repositories."""
     init_db()
     conn = _open_conn()
     try:
-        repos = db_list_repos(conn)
+        if repo is None:
+            # No repo specified — show same table as list
+            repos = db_list_repos(conn)
+            if not repos:
+                typer.echo("No repos registered. Run: repolens ingest <path>")
+                return
+            file_counts = _live_file_counts(conn)
+            _print_repos_table(repos, file_counts)
+            return
+
+        # Single-repo detail view
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+        repo_name: str = repo_row["name"]
+        repo_path: str = repo_row["path"]
+
+        files = list_files(conn, repo_id)
+        total_files = len(files)
+
+        # Classification breakdown
+        cat_counts: dict[str, int] = {}
+        for f in files:
+            cat = f.get("classification") or "unclassified"
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+        # Summary coverage (file-level summaries)
+        file_summaries = list_summaries_by_scope(conn, repo_id, "file")
+        summary_count = len(file_summaries)
+        coverage_pct = (summary_count / total_files * 100) if total_files > 0 else 0.0
+
+        # Last scan time (max mtime from files table)
+        max_mtime = max((f.get("mtime") or 0 for f in files), default=0)
+        last_scan = (
+            datetime.fromtimestamp(max_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            if max_mtime
+            else "never"
+        )
     finally:
         conn.close()
 
-    if not repos:
-        typer.echo("No repositories tracked yet.")
-        return
+    typer.echo(f"Repo:   {repo_name}  (ID: {repo_id})")
+    typer.echo(f"Path:   {repo_path}")
+    typer.echo(f"Files:  {total_files}")
+    typer.echo(f"Last scan: {last_scan}")
+    typer.echo("")
 
-    # Column widths
+    if not cat_counts:
+        typer.echo("Classification: not run yet (use: repolens classify <repo>)")
+    else:
+        typer.echo("Classification breakdown:")
+        ordered_cats = ("core", "config", "test", "docs", "build", "generated", "other", "unclassified")
+        # Print known categories first, then any unexpected ones
+        all_cats = list(ordered_cats) + [c for c in cat_counts if c not in ordered_cats]
+        for cat in all_cats:
+            count = cat_counts.get(cat, 0)
+            if count == 0:
+                continue
+            pct = count / total_files * 100
+            bar = "#" * min(count, 30)
+            typer.echo(f"  {cat:<14} {count:>4}  {pct:5.1f}%  {bar}")
+
+    typer.echo("")
+    typer.echo(
+        f"Summary coverage: {summary_count} / {total_files} files  ({coverage_pct:.1f}%)"
+    )
+
+
+def _live_file_counts(conn: sqlite3.Connection) -> dict[int, int]:
+    """Return a dict mapping repo_id -> live file count from the files table."""
+    rows = conn.execute(
+        "SELECT repo_id, COUNT(*) AS cnt FROM files GROUP BY repo_id"
+    ).fetchall()
+    return {r["repo_id"]: r["cnt"] for r in rows}
+
+
+def _print_repos_table(repos: list[dict], file_counts: dict[int, int]) -> None:
+    """Print a formatted table of repos. Used by both list and status."""
     id_w, name_w, path_w, files_w, scan_w = 4, 24, 48, 6, 19
 
     header = (
@@ -460,20 +523,88 @@ def list_repos() -> None:
             if last_ts
             else "never"
         )
-        file_count = r.get("file_count") or 0
+        cnt = file_counts.get(r["id"], 0)
         typer.echo(
             f"{r['id']:<{id_w}}  {r['name']:<{name_w}}  {r['path']:<{path_w}}  "
-            f"{file_count:>{files_w}}  {last:<{scan_w}}"
+            f"{cnt:>{files_w}}  {last:<{scan_w}}"
         )
+
+
+@app.command(name="list")
+def list_repos() -> None:
+    """List all registered repositories with file counts."""
+    init_db()
+    conn = _open_conn()
+    try:
+        repos = db_list_repos(conn)
+        if not repos:
+            typer.echo("No repos registered. Run: repolens ingest <path>")
+            return
+        file_counts = _live_file_counts(conn)
+    finally:
+        conn.close()
+
+    _print_repos_table(repos, file_counts)
 
 
 @app.command()
 def runs(
-    repo: Optional[str] = typer.Argument(None, help="Repo ID, name, or path."),
-    limit: int = typer.Option(20, "--limit", help="Number of runs to show."),
+    repo: Optional[str] = typer.Argument(None, help="Repo ID, name, or path (omit for all repos)."),
+    limit: int = typer.Option(10, "--limit", help="Number of runs to show."),
 ) -> None:
     """Show recent AI task runs."""
-    typer.echo("[stub] runs")
+    init_db()
+    conn = _open_conn()
+    try:
+        repo_id: int | None = None
+        if repo is not None:
+            repo_row = _resolve_repo(conn, repo)
+            repo_id = repo_row["id"]
+
+        run_rows = db_list_runs(conn, repo_id=repo_id, limit=limit)
+
+        # Build repo name lookup for display
+        all_repos = db_list_repos(conn)
+        repo_names: dict[int, str] = {r["id"]: r["name"] for r in all_repos}
+    finally:
+        conn.close()
+
+    if not run_rows:
+        typer.echo("No runs recorded yet.")
+        return
+
+    # Column widths
+    id_w, repo_w, task_w, model_w, status_w, tok_w, cost_w, ts_w = 4, 20, 14, 22, 9, 10, 8, 16
+
+    header = (
+        f"{'ID':<{id_w}}  {'Repo':<{repo_w}}  {'Task':<{task_w}}  {'Model':<{model_w}}  "
+        f"{'Status':<{status_w}}  {'Tokens':>{tok_w}}  {'Cost':>{cost_w}}  {'Created':<{ts_w}}"
+    )
+    typer.echo(header)
+    typer.echo("-" * len(header))
+
+    for r in run_rows:
+        repo_label = repo_names.get(r.get("repo_id") or -1, "—")[:repo_w]
+        task_label = (r.get("task_type") or "—")[:task_w]
+        model_label = (r.get("model") or "—")[:model_w]
+        status_label = (r.get("status") or "—")[:status_w]
+        prompt_tok = r.get("prompt_tokens") or 0
+        comp_tok = r.get("completion_tokens") or 0
+        tokens = prompt_tok + comp_tok
+        tok_label = str(tokens) if tokens > 0 else "—"
+        cost = r.get("cost_usd")
+        cost_label = f"${cost:.4f}" if cost is not None else "—"
+        created_ts = r.get("created_at")
+        created = (
+            datetime.fromtimestamp(created_ts).strftime("%Y-%m-%d %H:%M")
+            if created_ts
+            else "—"
+        )
+        typer.echo(
+            f"{r['id']:<{id_w}}  {repo_label:<{repo_w}}  {task_label:<{task_w}}  "
+            f"{model_label:<{model_w}}  {status_label:<{status_w}}  {tok_label:>{tok_w}}  "
+            f"{cost_label:>{cost_w}}  {created:<{ts_w}}"
+        )
 
 
 if __name__ == "__main__":
