@@ -39,7 +39,7 @@ tasks:
   - tests/conftest.py
 - id: T02
   title: SQLite schema and migration runner
-  status: todo
+  status: done
   depends_on:
   - T01
   goal: 'Implement repolens/db/schema.py. Create all tables (repos, files, summaries,
@@ -54,8 +54,8 @@ tasks:
   - All indexes exist in sqlite_master
   - schema_version table has one row with version=1
   validation_commands:
-  - .venv/bin/python3 -c "from repolens.db.schema import init_db; import tempfile, os; os.environ['REPOLENS_DB']=tempfile.mktemp(suffix='.db');
-    init_db()"
+  - .venv/bin/python3 -c "from repolens.db.schema import init_db; import tempfile,
+    os; os.environ['REPOLENS_DB']=tempfile.mktemp(suffix='.db'); init_db()"
   - .venv/bin/pytest tests/test_db.py -q
   documentation_targets:
   - CHANGELOG.md
@@ -129,8 +129,8 @@ tasks:
   - content_hash is a valid sha256 hex string
   - scan_repo on this repo itself completes without error
   validation_commands:
-  - .venv/bin/python3 -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.');
-    assert len(files) > 0, 'scan returned 0 files'; print(len(files))"
+  - .venv/bin/python3 -c "from repolens.ingestion.scanner import scan_repo; files
+    = scan_repo('.'); assert len(files) > 0, 'scan returned 0 files'; print(len(files))"
   - .venv/bin/pytest tests/test_ingestion.py -q
   documentation_targets:
   - CHANGELOG.md
@@ -340,8 +340,8 @@ tasks:
   - Falls back gracefully if tiktoken is unavailable
   - estimate_cost returns a float >= 0
   validation_commands:
-  - .venv/bin/python3 -c "from repolens.context.token_counter import count_tokens; n = count_tokens('test');
-    assert n > 0, 'count_tokens returned 0'; print(n)"
+  - .venv/bin/python3 -c "from repolens.context.token_counter import count_tokens;
+    n = count_tokens('test'); assert n > 0, 'count_tokens returned 0'; print(n)"
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -531,8 +531,8 @@ tasks:
   validation_commands:
   - test -f smoke_test_output.md
   - .venv/bin/python3 -m repolens.cli.main runs --limit 1 2>&1 | grep "done"
-  - .venv/bin/python3 -m repolens.cli.main health 2>&1 | grep -i "ok\|healthy" || python -m repolens.cli.main
-    list
+  - .venv/bin/python3 -m repolens.cli.main health 2>&1 | grep -i "ok\|healthy" ||
+    python -m repolens.cli.main list
   documentation_targets:
   - smoke_test_output.md
   - CHANGELOG.md
