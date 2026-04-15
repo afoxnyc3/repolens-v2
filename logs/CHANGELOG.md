@@ -52,3 +52,9 @@ ingest and list commands implemented; ingest on this repo: 60 files scanned, 622
 ## 2026-04-15T16:03:43.152963+00:00 | T07 → done
 68 tests passing. classify_file covers all 7 rules including edge cases (depth boundary for config ext, test/generated precedence, README vs arbitrary .md). score_file covers all modifiers including combined interactions. Edge note for T08: classify_file takes extension as a separate param — caller must split it from the path; depth-based config rule uses <= 1 so direct children of root get config treatment.
 
+## 2026-04-15T16:04:32.602281+00:00 | T14 → in_progress
+
+
+## 2026-04-15T16:05:24.310964+00:00 | T14 → done
+Implemented count_tokens with tiktoken cl100k_base encoding and len//4 fallback. Implemented estimate_cost with per-model pricing table for opus/sonnet/haiku, unknown model defaults to sonnet pricing. 12 tests all passing, full suite 206/206.
+

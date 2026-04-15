@@ -1,0 +1,5 @@
+{
+  "task_id": "T14",
+  "summary": "Implemented count_tokens with tiktoken cl100k_base encoding and len//4 fallback. Implemented estimate_cost with per-model pricing table for opus/sonnet/haiku, unknown model defaults to sonnet pricing. 12 tests all passing, full suite 206/206.",
+  "at": "2026-04-15T16:05:24.311032+00:00"
+}

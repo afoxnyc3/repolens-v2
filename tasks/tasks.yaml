@@ -327,7 +327,7 @@ tasks:
   - repolens/cli/main.py
 - id: T14
   title: Token counter
-  status: todo
+  status: done
   depends_on:
   - T01
   goal: 'Implement repolens/context/token_counter.py. Function: count_tokens(text)
