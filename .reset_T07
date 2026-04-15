@@ -1,0 +1,5 @@
+{
+  "task_id": "T07",
+  "summary": "68 tests passing. classify_file covers all 7 rules including edge cases (depth boundary for config ext, test/generated precedence, README vs arbitrary .md). score_file covers all modifiers including combined interactions. Edge note for T08: classify_file takes extension as a separate param \u2014 caller must split it from the path; depth-based config rule uses <= 1 so direct children of root get config treatment.",
+  "at": "2026-04-15T16:03:43.153029+00:00"
+}

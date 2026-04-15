@@ -161,7 +161,7 @@ tasks:
   - repolens/cli/main.py
 - id: T07
   title: File classifier and scorer
-  status: todo
+  status: done
   depends_on:
   - T05
   goal: 'Implement repolens/classification/classifier.py. Function: classify_file(relative_path,

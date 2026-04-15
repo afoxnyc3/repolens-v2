@@ -46,3 +46,9 @@ Four pure prompt functions matching DESIGN.md 7.2 exactly. 20 new tests added to
 ## 2026-04-15T16:01:34.948168+00:00 | T06 → done
 ingest and list commands implemented; ingest on this repo: 60 files scanned, 6224 skipped (binary/oversized/gitignored); idempotent on re-run
 
+## 2026-04-15T16:02:04.010215+00:00 | T07 → in_progress
+
+
+## 2026-04-15T16:03:43.152963+00:00 | T07 → done
+68 tests passing. classify_file covers all 7 rules including edge cases (depth boundary for config ext, test/generated precedence, README vs arbitrary .md). score_file covers all modifiers including combined interactions. Edge note for T08: classify_file takes extension as a separate param — caller must split it from the path; depth-based config rule uses <= 1 so direct children of root get config treatment.
+
