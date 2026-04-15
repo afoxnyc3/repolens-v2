@@ -14,12 +14,15 @@ from repolens import config
 from repolens.ai.client import RepolensClient
 from repolens.classification.classifier import classify_file, score_file
 from repolens.context.token_counter import estimate_cost
+from repolens.context.exporter import export_json, export_markdown
+from repolens.context.packager import build_context
 from repolens.db.repository import (
     create_repo,
     get_repo,
     list_files,
     list_repos as db_list_repos,
     list_summaries_by_scope,
+    save_bundle,
     upsert_file,
 )
 from repolens.db.schema import init_db
@@ -359,7 +362,50 @@ def context(
     fmt: str = typer.Option("markdown", "--format", help="markdown|json"),
 ) -> None:
     """Build a context bundle and write to stdout or file."""
-    typer.echo(f"[stub] context {repo} --task {task} --budget {budget}")
+    if fmt not in ("markdown", "json"):
+        typer.echo(f"Error: --format must be 'markdown' or 'json', got: {fmt!r}", err=True)
+        raise typer.Exit(1)
+
+    init_db()
+    conn = _open_conn()
+    try:
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+
+        bundle = build_context(conn, repo_id, task, token_budget=budget)
+
+        save_bundle(
+            conn,
+            repo_id=repo_id,
+            task_type=task,
+            token_budget=budget,
+            token_count=bundle.token_count,
+            content=bundle.content,
+            file_paths=bundle.file_paths,
+        )
+
+        # Stderr: token count + file list (safe to pipe stdout)
+        typer.echo(f"token_count: {bundle.token_count}", err=True)
+        typer.echo(f"files ({len(bundle.file_paths)}):", err=True)
+        for fp in bundle.file_paths:
+            typer.echo(f"  {fp}", err=True)
+
+        # Format output
+        if fmt == "json":
+            formatted = export_json(bundle, task_type=task, repo_id=repo_id)
+        else:
+            formatted = export_markdown(bundle, task_type=task, repo_id=repo_id)
+
+        if output:
+            out_path = Path(output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(formatted, encoding="utf-8")
+            typer.echo(f"Written to {output}", err=True)
+        else:
+            typer.echo(formatted)
+
+    finally:
+        conn.close()
 
 
 @app.command()

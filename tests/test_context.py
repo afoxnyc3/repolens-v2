@@ -14,11 +14,13 @@ Coverage:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
+from repolens.context.exporter import export_json, export_markdown
 from repolens.context.packager import ContextBundle, build_context
 from repolens.context.token_counter import count_tokens
 from repolens.db.repository import (
@@ -329,3 +331,106 @@ class TestImportanceOrdering:
         # trivial.py has too many tokens AND low importance; important.py may fit
         # at minimum neither should push us over budget
         assert bundle.token_count <= budget * 1.05
+
+
+# ---------------------------------------------------------------------------
+# Exporter: export_markdown
+# ---------------------------------------------------------------------------
+
+
+class TestExportMarkdown:
+    def test_returns_non_empty_string(self):
+        bundle = ContextBundle(content="hello world", file_paths=["a.py"], token_count=5)
+        result = export_markdown(bundle)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_contains_bundle_content(self):
+        bundle = ContextBundle(content="hello world", file_paths=[], token_count=5)
+        result = export_markdown(bundle)
+        assert "hello world" in result
+
+    def test_metadata_header_present(self):
+        bundle = ContextBundle(content="x", file_paths=["a.py", "b.py"], token_count=42)
+        result = export_markdown(bundle, task_type="analyze", repo_id=1)
+        assert "---" in result
+        assert "token_count: 42" in result
+        assert "file_count: 2" in result
+        assert "task_type: analyze" in result
+        assert "repo_id: 1" in result
+
+    def test_generated_timestamp_present(self):
+        bundle = ContextBundle(content="x", token_count=1)
+        result = export_markdown(bundle)
+        assert "generated:" in result
+
+    def test_optional_fields_omitted_when_not_given(self):
+        bundle = ContextBundle(content="x", token_count=1)
+        result = export_markdown(bundle)
+        assert "repo_id" not in result
+        assert "task_type" not in result
+
+    def test_file_count_zero_when_no_files(self):
+        bundle = ContextBundle(content="y", file_paths=[], token_count=2)
+        result = export_markdown(bundle)
+        assert "file_count: 0" in result
+
+    def test_content_appears_after_header(self):
+        bundle = ContextBundle(content="unique_sentinel_content", file_paths=[], token_count=3)
+        result = export_markdown(bundle)
+        header_end = result.index("---\n\n")
+        content_start = result.index("unique_sentinel_content")
+        assert content_start > header_end
+
+
+# ---------------------------------------------------------------------------
+# Exporter: export_json
+# ---------------------------------------------------------------------------
+
+
+class TestExportJson:
+    def test_returns_valid_json(self):
+        bundle = ContextBundle(content="hello", file_paths=["a.py"], token_count=3)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+
+    def test_content_key_present(self):
+        bundle = ContextBundle(content="hello world", file_paths=[], token_count=3)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert "content" in parsed
+        assert parsed["content"] == "hello world"
+
+    def test_file_paths_and_token_count(self):
+        bundle = ContextBundle(content="x", file_paths=["a.py", "b.py"], token_count=7)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert parsed["file_paths"] == ["a.py", "b.py"]
+        assert parsed["token_count"] == 7
+
+    def test_optional_fields_included_when_given(self):
+        bundle = ContextBundle(content="x", file_paths=[], token_count=1)
+        result = export_json(bundle, task_type="review", repo_id=42)
+        parsed = json.loads(result)
+        assert parsed["task_type"] == "review"
+        assert parsed["repo_id"] == 42
+
+    def test_optional_fields_absent_when_not_given(self):
+        bundle = ContextBundle(content="x", file_paths=[], token_count=1)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert "task_type" not in parsed
+        assert "repo_id" not in parsed
+
+    def test_empty_file_paths_serializes_as_array(self):
+        bundle = ContextBundle(content="x", file_paths=[], token_count=0)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert parsed["file_paths"] == []
+
+    def test_non_ascii_content_preserved(self):
+        bundle = ContextBundle(content="caf\u00e9 \u4e2d\u6587", file_paths=[], token_count=3)
+        result = export_json(bundle)
+        parsed = json.loads(result)
+        assert parsed["content"] == "caf\u00e9 \u4e2d\u6587"
