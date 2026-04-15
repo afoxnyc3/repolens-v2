@@ -16,3 +16,15 @@ Implemented repolens/db/schema.py with init_db(), all 6 tables with IF NOT EXIST
 ## 2026-04-15T12:39:29.574264+00:00 | T04 → done
 Implemented load_gitignore, is_ignored, is_binary, is_oversized in repolens/ingestion/filters.py. 20 tests passing. Uses gitignore-parser for .gitignore support, null-byte binary detection, stat-based size check. Always filters .git/ components.
 
+## 2026-04-15T12:40:20.554785+00:00 | T09 → in_progress
+
+
+## 2026-04-15T12:41:11.586354+00:00 | T09 → done
+Implemented RepolensClient in repolens/ai/client.py. Reads ANTHROPIC_API_KEY (ValueError if missing), REPOLENS_MODEL (default claude-opus-4-5), REPOLENS_MAX_TOKENS (default 4096). complete() returns (str, int, int). 16 tests, all mocked, no real API calls. Full suite 63/63.
+
+## 2026-04-15T15:25:53.297202+00:00 | T03 → in_progress
+
+
+## 2026-04-15T15:28:02.066574+00:00 | T03 → done
+Implemented all 12 repository functions. PATCH semantics on upserts (merge fields, keep existing). file_paths JSON-serialised in bundles. update_run auto-sets completed_at on terminal status. list_runs ORDER BY created_at DESC, id DESC for deterministic ordering on same-second inserts. 62 tests passing.
+
