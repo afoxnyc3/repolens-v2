@@ -64,3 +64,9 @@ Implemented count_tokens with tiktoken cl100k_base encoding and len//4 fallback.
 ## 2026-04-15T16:07:50.975775+00:00 | T11 → done
 Cache logic verified: hash match skips AI, hash mismatch re-calls and updates, None hash treated as miss. 32 new tests, 238 total passing. Added client.model property (was private _default_model). Content cap at 200_000 chars confirmed by truncation tests.
 
+## 2026-04-15T16:34:50.577813+00:00 | T12 → in_progress
+
+
+## 2026-04-15T16:36:22.153529+00:00 | T12 → done
+dir_summarizer and repo_summarizer implemented with cache hit/miss. 55 tests passing (28 new). Both functions accept dict[str,str] summaries block — T13 summarize CLI can call them directly.
+

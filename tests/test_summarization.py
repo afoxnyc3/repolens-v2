@@ -1,10 +1,12 @@
-"""Tests for repolens/summarization/file_summarizer.py.
+"""Tests for repolens/summarization/ — file, directory, and repo summarizers.
 
 Covers:
 - Cache hit: cached summary returned, no AI call made
 - Cache miss: AI called, result stored, summary returned
 - Content hash mismatch: stale cache skipped, AI re-called, new hash stored
 - Large file: content truncated before the AI call
+- Directory summarizer: cache hit/miss, prompt construction, storage
+- Repo summarizer: cache hit/miss, prompt construction, storage
 """
 
 from __future__ import annotations
@@ -19,11 +21,13 @@ import pytest
 from repolens.db.repository import get_summary, upsert_summary
 from repolens.db.schema import init_db
 from repolens.ingestion.scanner import FileRecord
+from repolens.summarization.dir_summarizer import summarize_directory
 from repolens.summarization.file_summarizer import (
     _CONTENT_CHAR_LIMIT,
     _language_for_extension,
     summarize_file,
 )
+from repolens.summarization.repo_summarizer import _REPO_TARGET_PATH, summarize_repo
 
 
 # ---------------------------------------------------------------------------
@@ -382,3 +386,240 @@ class TestLanguageForExtension:
     ])
     def test_known_extensions(self, ext, expected):
         assert _language_for_extension(ext) == expected
+
+
+# ===========================================================================
+# Directory summarizer
+# ===========================================================================
+
+_DIR_FILE_SUMMARIES: dict[str, str] = {
+    "repolens/db/repository.py": "Handles DB CRUD.",
+    "repolens/db/schema.py": "Defines the schema.",
+}
+
+
+class TestDirectorySummarizerCacheHit:
+    def test_returns_cached_summary_without_ai_call(self, db):
+        """A pre-existing cache entry is returned and AI is not called."""
+        upsert_summary(
+            db,
+            repo_id=1,
+            scope="directory",
+            target_path="repolens/db",
+            summary="Cached dir summary.",
+        )
+
+        client = _mock_client()
+        result = summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        assert result == "Cached dir summary."
+        client.complete.assert_not_called()
+
+    def test_cache_hit_does_not_update_db(self, db):
+        """Cache hit must not overwrite the stored row."""
+        upsert_summary(
+            db,
+            repo_id=1,
+            scope="directory",
+            target_path="repolens/db",
+            summary="Original dir summary.",
+        )
+
+        client = _mock_client(summary="New dir summary from AI.")
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "directory", "repolens/db")
+        assert stored["summary"] == "Original dir summary."
+
+
+class TestDirectorySummarizerCacheMiss:
+    def test_calls_ai_client_on_miss(self, db):
+        client = _mock_client()
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+        client.complete.assert_called_once()
+
+    def test_returns_ai_summary_on_miss(self, db):
+        client = _mock_client(summary="Directory AI summary.")
+        result = summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+        assert result == "Directory AI summary."
+
+    def test_stores_summary_in_db_on_miss(self, db):
+        client = _mock_client(summary="Stored dir summary.")
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "directory", "repolens/db")
+        assert stored is not None
+        assert stored["summary"] == "Stored dir summary."
+
+    def test_stores_model_name(self, db):
+        client = _mock_client(model="claude-haiku-4-5")
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "directory", "repolens/db")
+        assert stored["model"] == "claude-haiku-4-5"
+
+    def test_stores_token_counts(self, db):
+        client = _mock_client(prompt_tokens=30, completion_tokens=12)
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "directory", "repolens/db")
+        assert stored["prompt_tokens"] == 30
+        assert stored["completion_tokens"] == 12
+
+    def test_second_call_is_cache_hit(self, db):
+        """After miss+store, subsequent call must hit cache."""
+        client = _mock_client()
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+        assert client.complete.call_count == 1
+
+    def test_prompt_contains_dir_path(self, db):
+        """The prompt passed to the AI must mention the directory path."""
+        client = _mock_client()
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        called_prompt: str = client.complete.call_args[0][0]
+        assert "repolens/db" in called_prompt
+
+    def test_prompt_contains_file_summaries(self, db):
+        """The prompt must include each file's summary text."""
+        client = _mock_client()
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        called_prompt: str = client.complete.call_args[0][0]
+        assert "Handles DB CRUD." in called_prompt
+        assert "Defines the schema." in called_prompt
+
+    def test_empty_file_summaries_still_calls_ai(self, db):
+        """An empty mapping is valid input; AI should still be called."""
+        client = _mock_client(summary="Empty dir summary.")
+        result = summarize_directory(db, 1, "repolens/empty", {}, client)
+        assert result == "Empty dir summary."
+        client.complete.assert_called_once()
+
+
+# ===========================================================================
+# Repo summarizer
+# ===========================================================================
+
+_REPO_DIR_SUMMARIES: dict[str, str] = {
+    "repolens/db": "Database layer.",
+    "repolens/ai": "AI client and prompts.",
+    "repolens/ingestion": "Scanner and filters.",
+}
+
+
+class TestRepoSummarizerCacheHit:
+    def test_returns_cached_summary_without_ai_call(self, db):
+        """A pre-existing repo-level cache entry is returned without calling AI."""
+        upsert_summary(
+            db,
+            repo_id=1,
+            scope="repo",
+            target_path=_REPO_TARGET_PATH,
+            summary="Cached repo summary.",
+        )
+
+        client = _mock_client()
+        result = summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        assert result == "Cached repo summary."
+        client.complete.assert_not_called()
+
+    def test_cache_hit_does_not_update_db(self, db):
+        upsert_summary(
+            db,
+            repo_id=1,
+            scope="repo",
+            target_path=_REPO_TARGET_PATH,
+            summary="Original repo summary.",
+        )
+
+        client = _mock_client(summary="New repo summary from AI.")
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        assert stored["summary"] == "Original repo summary."
+
+
+class TestRepoSummarizerCacheMiss:
+    def test_calls_ai_client_on_miss(self, db):
+        client = _mock_client()
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+        client.complete.assert_called_once()
+
+    def test_returns_ai_summary_on_miss(self, db):
+        client = _mock_client(summary="Repo AI summary.")
+        result = summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+        assert result == "Repo AI summary."
+
+    def test_stores_summary_in_db_on_miss(self, db):
+        client = _mock_client(summary="Stored repo summary.")
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        assert stored is not None
+        assert stored["summary"] == "Stored repo summary."
+
+    def test_stores_model_name(self, db):
+        client = _mock_client(model="claude-sonnet-4-6")
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        assert stored["model"] == "claude-sonnet-4-6"
+
+    def test_stores_token_counts(self, db):
+        client = _mock_client(prompt_tokens=55, completion_tokens=18)
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        assert stored["prompt_tokens"] == 55
+        assert stored["completion_tokens"] == 18
+
+    def test_target_path_is_empty_string(self, db):
+        """Repo summary must be stored under the empty-string target_path."""
+        client = _mock_client()
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", "")
+        assert stored is not None
+
+    def test_second_call_is_cache_hit(self, db):
+        client = _mock_client()
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+        assert client.complete.call_count == 1
+
+    def test_prompt_contains_dir_summaries(self, db):
+        """The prompt must include each directory's summary text."""
+        client = _mock_client()
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        called_prompt: str = client.complete.call_args[0][0]
+        assert "Database layer." in called_prompt
+        assert "AI client and prompts." in called_prompt
+        assert "Scanner and filters." in called_prompt
+
+    def test_empty_dir_summaries_still_calls_ai(self, db):
+        """Empty dir_summaries is valid; AI must still be called."""
+        client = _mock_client(summary="Empty repo summary.")
+        result = summarize_repo(db, 1, {}, client)
+        assert result == "Empty repo summary."
+        client.complete.assert_called_once()
+
+    def test_separate_repo_ids_have_independent_caches(self, db):
+        """Cache keyed on repo_id — different repos must not share entries."""
+        # Insert a second repo
+        db.execute("INSERT INTO repos (id, path, name) VALUES (2, '/repo2', 'repo2')")
+        db.commit()
+
+        client1 = _mock_client(summary="Repo 1 summary.")
+        client2 = _mock_client(summary="Repo 2 summary.")
+
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client1)
+        summarize_repo(db, 2, _REPO_DIR_SUMMARIES, client2)
+
+        stored1 = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        stored2 = get_summary(db, 2, "repo", _REPO_TARGET_PATH)
+        assert stored1["summary"] == "Repo 1 summary."
+        assert stored2["summary"] == "Repo 2 summary."
