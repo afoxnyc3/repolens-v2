@@ -28,3 +28,9 @@ Implemented RepolensClient in repolens/ai/client.py. Reads ANTHROPIC_API_KEY (Va
 ## 2026-04-15T15:28:02.066574+00:00 | T03 → done
 Implemented all 12 repository functions. PATCH semantics on upserts (merge fields, keep existing). file_paths JSON-serialised in bundles. update_run auto-sets completed_at on terminal status. list_runs ORDER BY created_at DESC, id DESC for deterministic ordering on same-second inserts. 62 tests passing.
 
+## 2026-04-15T15:28:37.956758+00:00 | T05 → in_progress
+
+
+## 2026-04-15T15:29:40.303469+00:00 | T05 → done
+scanner.py: FileRecord dataclass + scan_repo via os.scandir. Filters: gitignore, .git/, binary, oversized. sha256 per file. 8 new scanner tests added (28 total). Scan of repo itself: 55 files.
+

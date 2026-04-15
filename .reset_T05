@@ -1,0 +1,5 @@
+{
+  "task_id": "T05",
+  "summary": "scanner.py: FileRecord dataclass + scan_repo via os.scandir. Filters: gitignore, .git/, binary, oversized. sha256 per file. 8 new scanner tests added (28 total). Scan of repo itself: 55 files.",
+  "at": "2026-04-15T15:29:40.303537+00:00"
+}

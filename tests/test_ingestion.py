@@ -1,8 +1,9 @@
-"""Tests for repolens.ingestion.filters."""
+"""Tests for repolens.ingestion.filters and repolens.ingestion.scanner."""
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from repolens.ingestion.filters import (
     is_oversized,
     load_gitignore,
 )
+from repolens.ingestion.scanner import FileRecord, scan_repo
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -201,3 +203,79 @@ def test_custom_threshold(tmp_path: Path) -> None:
 
 def test_missing_file_treated_as_oversized(tmp_path: Path) -> None:
     assert is_oversized(tmp_path / "does_not_exist.bin") is True
+
+
+# ---------------------------------------------------------------------------
+# scanner — scan_repo
+# ---------------------------------------------------------------------------
+
+
+def test_scan_returns_expected_files(sample_repo: Path) -> None:
+    """Only non-ignored, non-binary text files should be returned."""
+    records = scan_repo(str(sample_repo))
+    paths = {r.relative_path for r in records}
+
+    # main.py and fake_binary.png (text, no null byte) should be present
+    assert "main.py" in paths
+    assert "fake_binary.png" in paths
+
+    # .gitignore itself is plain text — should be included
+    assert ".gitignore" in paths
+
+
+def test_scan_excludes_git_dir(sample_repo: Path) -> None:
+    records = scan_repo(str(sample_repo))
+    for r in records:
+        assert ".git" not in Path(r.relative_path).parts, (
+            f".git file leaked into results: {r.relative_path}"
+        )
+
+
+def test_scan_excludes_binary(sample_repo: Path) -> None:
+    records = scan_repo(str(sample_repo))
+    paths = {r.relative_path for r in records}
+    # image.png has a null byte — must be excluded
+    assert "image.png" not in paths
+
+
+def test_scan_hash_is_valid_hex(sample_repo: Path) -> None:
+    records = scan_repo(str(sample_repo))
+    assert records, "expected at least one record"
+    sha256_pattern = re.compile(r"^[0-9a-f]{64}$")
+    for r in records:
+        assert sha256_pattern.match(r.content_hash), (
+            f"invalid hash for {r.relative_path}: {r.content_hash!r}"
+        )
+
+
+def test_scan_sorted_by_relative_path(sample_repo: Path) -> None:
+    records = scan_repo(str(sample_repo))
+    paths = [r.relative_path for r in records]
+    assert paths == sorted(paths)
+
+
+def test_scan_file_record_fields(sample_repo: Path) -> None:
+    records = scan_repo(str(sample_repo))
+    main_rec = next((r for r in records if r.relative_path == "main.py"), None)
+    assert main_rec is not None
+
+    assert main_rec.repo_root == str(sample_repo.resolve())
+    assert main_rec.extension == ".py"
+    assert main_rec.size_bytes > 0
+    assert main_rec.mtime > 0
+    assert len(main_rec.content_hash) == 64
+
+
+def test_scan_custom_ignore(sample_repo: Path) -> None:
+    # Exclude *.py via custom_ignores — main.py should disappear
+    records = scan_repo(str(sample_repo), custom_ignores=["*.py"])
+    paths = {r.relative_path for r in records}
+    assert "main.py" not in paths
+
+
+def test_scan_repo_itself_completes(tmp_path: Path) -> None:
+    """Smoke test: scanning the repolens project root must not error and must
+    return a non-empty result."""
+    project_root = Path(__file__).parent.parent
+    records = scan_repo(str(project_root))
+    assert len(records) > 0, "scan of project root returned no files"

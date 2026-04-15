@@ -113,7 +113,7 @@ tasks:
   - tests/fixtures/sample_repo/.gitignore
 - id: T05
   title: Directory scanner
-  status: todo
+  status: done
   depends_on:
   - T04
   goal: 'Implement repolens/ingestion/scanner.py. Function: scan_repo(path, custom_ignores=[])
