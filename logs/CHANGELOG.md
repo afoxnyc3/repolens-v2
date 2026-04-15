@@ -70,3 +70,9 @@ Cache logic verified: hash match skips AI, hash mismatch re-calls and updates, N
 ## 2026-04-15T16:36:22.153529+00:00 | T12 → done
 dir_summarizer and repo_summarizer implemented with cache hit/miss. 55 tests passing (28 new). Both functions accept dict[str,str] summaries block — T13 summarize CLI can call them directly.
 
+## 2026-04-15T16:36:51.650168+00:00 | T15 → in_progress
+
+
+## 2026-04-15T16:39:56.984056+00:00 | T15 → done
+22 tests, 283 total passing. Budget enforcement verified (<= budget*1.05). Summary fallback for oversized/missing files. file_paths tracks only full-content inclusions. list_summaries_by_scope added to repository.py.
+

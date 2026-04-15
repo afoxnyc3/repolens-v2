@@ -1,0 +1,5 @@
+{
+  "task_id": "T15",
+  "summary": "22 tests, 283 total passing. Budget enforcement verified (<= budget*1.05). Summary fallback for oversized/missing files. file_paths tracks only full-content inclusions. list_summaries_by_scope added to repository.py.",
+  "at": "2026-04-15T16:39:56.984127+00:00"
+}

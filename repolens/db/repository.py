@@ -275,6 +275,29 @@ def get_summary(
     return _row(row)
 
 
+def list_summaries_by_scope(
+    conn: sqlite3.Connection,
+    repo_id: int,
+    scope: str,
+) -> list[dict]:
+    """Return all summaries for a repo filtered by scope.
+
+    Args:
+        conn:     Open SQLite connection.
+        repo_id:  Filter to this repo.
+        scope:    'repo', 'directory', or 'file'.
+
+    Returns:
+        List of plain dicts ordered by target_path ASC.
+    """
+    _ensure_row_factory(conn)
+    rows = conn.execute(
+        "SELECT * FROM summaries WHERE repo_id = ? AND scope = ? ORDER BY target_path ASC",
+        (repo_id, scope),
+    ).fetchall()
+    return _rows(rows)
+
+
 # ---------------------------------------------------------------------------
 # context_bundles
 # ---------------------------------------------------------------------------

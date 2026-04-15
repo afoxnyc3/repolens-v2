@@ -349,7 +349,7 @@ tasks:
   - repolens/context/token_counter.py
 - id: T15
   title: Context packager
-  status: todo
+  status: done
   depends_on:
   - T03
   - T14
