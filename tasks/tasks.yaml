@@ -88,7 +88,7 @@ tasks:
   - tests/test_db.py
 - id: T04
   title: File filters (gitignore + custom patterns)
-  status: todo
+  status: done
   depends_on:
   - T01
   goal: 'Implement repolens/ingestion/filters.py. Functions: load_gitignore(repo_path),
