@@ -257,7 +257,7 @@ tasks:
   - repolens/ai/prompts.py
 - id: T11
   title: File summarizer with caching
-  status: todo
+  status: done
   depends_on:
   - T03
   - T10

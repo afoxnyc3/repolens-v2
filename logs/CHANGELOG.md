@@ -58,3 +58,9 @@ ingest and list commands implemented; ingest on this repo: 60 files scanned, 622
 ## 2026-04-15T16:05:24.310964+00:00 | T14 → done
 Implemented count_tokens with tiktoken cl100k_base encoding and len//4 fallback. Implemented estimate_cost with per-model pricing table for opus/sonnet/haiku, unknown model defaults to sonnet pricing. 12 tests all passing, full suite 206/206.
 
+## 2026-04-15T16:06:26.611552+00:00 | T11 → in_progress
+
+
+## 2026-04-15T16:07:50.975775+00:00 | T11 → done
+Cache logic verified: hash match skips AI, hash mismatch re-calls and updates, None hash treated as miss. 32 new tests, 238 total passing. Added client.model property (was private _default_model). Content cap at 200_000 chars confirmed by truncation tests.
+

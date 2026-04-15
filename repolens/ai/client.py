@@ -28,6 +28,11 @@ class RepolensClient:
             int(raw_tokens) if raw_tokens else self.DEFAULT_MAX_TOKENS
         )
 
+    @property
+    def model(self) -> str:
+        """The default model identifier used by this client."""
+        return self._default_model
+
     def complete(
         self,
         prompt: str,
