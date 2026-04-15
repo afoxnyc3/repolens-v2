@@ -304,7 +304,7 @@ tasks:
   - repolens/summarization/repo_summarizer.py
 - id: T13
   title: CLI summarize command
-  status: todo
+  status: done
   depends_on:
   - T08
   - T12
@@ -375,7 +375,7 @@ tasks:
   - tests/test_context.py
 - id: T16
   title: Context exporter and CLI context command
-  status: todo
+  status: done
   depends_on:
   - T15
   goal: 'Implement repolens/context/exporter.py with export_markdown(bundle) and export_json(bundle)

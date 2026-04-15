@@ -1,0 +1,5 @@
+{
+  "task_id": "T02",
+  "summary": "Implemented repolens/db/schema.py with init_db(), all 6 tables with IF NOT EXISTS, 4 indexes, schema_version seeded to 1, WAL mode, FK enforcement. Added get_schema_version() helper. 25 tests in tests/test_db.py covering table creation, idempotency, index existence, schema version, env var path, parent dir creation, column presence, FK cascade.",
+  "at": "2026-04-15T12:37:58.264562+00:00"
+}

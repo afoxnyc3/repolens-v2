@@ -1,0 +1,5 @@
+{
+  "task_id": "T04",
+  "summary": "Implemented load_gitignore, is_ignored, is_binary, is_oversized in repolens/ingestion/filters.py. 20 tests passing. Uses gitignore-parser for .gitignore support, null-byte binary detection, stat-based size check. Always filters .git/ components.",
+  "at": "2026-04-15T12:39:29.574331+00:00"
+}
