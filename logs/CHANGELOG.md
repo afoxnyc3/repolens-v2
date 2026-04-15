@@ -85,3 +85,6 @@ dir_summarizer and repo_summarizer implemented with cache hit/miss. 55 tests pas
 ## 2026-04-15T16:43:50.173975+00:00 | T08 → done
 classify command wired to classifier.py/score_file; resolves repo by int ID or path; upserts classification+importance_score per file; prints category counts + top 5 by score
 
+## 2026-04-15T18:10:38.833883+00:00 | T17 → done
+executor.py built. Fixed: engineer imported get_run which was missing from repository.py — added it. Run lifecycle (running → done/failed) verified. Error path tested. 296 tests passing.
+

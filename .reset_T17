@@ -1,0 +1,5 @@
+{
+  "task_id": "T17",
+  "summary": "executor.py built. Fixed: engineer imported get_run which was missing from repository.py \u2014 added it. Run lifecycle (running \u2192 done/failed) verified. Error path tested. 296 tests passing.",
+  "at": "2026-04-15T18:10:38.833952+00:00"
+}
