@@ -445,6 +445,21 @@ def update_run(conn: sqlite3.Connection, run_id: int, **fields: Any) -> None:
         )
 
 
+def get_run(conn: sqlite3.Connection, run_id: int) -> dict | None:
+    """Return a single run row by primary key, or None if not found.
+
+    Args:
+        conn:    Open SQLite connection.
+        run_id:  Primary key to look up.
+
+    Returns:
+        Plain dict of the run row, or None.
+    """
+    _ensure_row_factory(conn)
+    row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def list_runs(
     conn: sqlite3.Connection,
     repo_id: int | None = None,
