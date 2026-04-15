@@ -186,7 +186,7 @@ tasks:
   - tests/test_classification.py
 - id: T08
   title: CLI classify command
-  status: todo
+  status: done
   depends_on:
   - T06
   - T07
@@ -398,7 +398,7 @@ tasks:
   - repolens/context/exporter.py
 - id: T17
   title: Task executor and run logging
-  status: todo
+  status: done
   depends_on:
   - T09
   - T15
@@ -442,7 +442,7 @@ tasks:
   - repolens/cli/main.py
 - id: T19
   title: CLI status, list, and runs commands
-  status: todo
+  status: done
   depends_on:
   - T08
   - T17
