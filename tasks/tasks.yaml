@@ -281,7 +281,7 @@ tasks:
   - tests/test_summarization.py
 - id: T12
   title: Directory and repo summarizer
-  status: todo
+  status: done
   depends_on:
   - T11
   goal: 'Implement repolens/summarization/dir_summarizer.py and repo_summarizer.py.
