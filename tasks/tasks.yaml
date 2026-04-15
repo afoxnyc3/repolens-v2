@@ -135,7 +135,7 @@ tasks:
       - content_hash is a valid sha256 hex string
       - scan_repo on this repo itself completes without error
     validation_commands:
-      - python -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.'); print(f'{len(files)} files scanned'); assert len(files) > 0"
+      - python3 -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.'); assert len(files) > 0, 'scan returned 0 files'; print(len(files))"
       - python -m pytest tests/test_ingestion.py -q
     documentation_targets:
       - CHANGELOG.md
@@ -351,7 +351,7 @@ tasks:
       - Falls back gracefully if tiktoken is unavailable
       - estimate_cost returns a float >= 0
     validation_commands:
-      - python -c "from repolens.context.token_counter import count_tokens; n = count_tokens('hello world'); assert n > 0; print(f'tokens: {n}')"
+      - python3 -c "from repolens.context.token_counter import count_tokens; n = count_tokens('test'); assert n > 0, 'count_tokens returned 0'; print(n)"
     documentation_targets:
       - CHANGELOG.md
     files_expected:
