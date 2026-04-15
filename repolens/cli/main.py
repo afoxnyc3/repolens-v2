@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import time
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -10,16 +11,22 @@ from typing import Optional
 import typer
 
 from repolens import config
+from repolens.ai.client import RepolensClient
 from repolens.classification.classifier import classify_file, score_file
+from repolens.context.token_counter import estimate_cost
 from repolens.db.repository import (
     create_repo,
     get_repo,
     list_files,
     list_repos as db_list_repos,
+    list_summaries_by_scope,
     upsert_file,
 )
 from repolens.db.schema import init_db
-from repolens.ingestion.scanner import scan_repo
+from repolens.ingestion.scanner import FileRecord, scan_repo
+from repolens.summarization.dir_summarizer import summarize_directory
+from repolens.summarization.file_summarizer import summarize_file
+from repolens.summarization.repo_summarizer import summarize_repo
 
 app = typer.Typer(
     name="repolens",
@@ -207,7 +214,140 @@ def summarize(
     force: bool = typer.Option(False, "--force", help="Regenerate even if cached."),
 ) -> None:
     """Generate AI summaries at file, directory, and/or repo level."""
-    typer.echo(f"[stub] summarize {repo} --scope {scope}")
+    valid_scopes = {"file", "dir", "repo", "all"}
+    if scope not in valid_scopes:
+        typer.echo(
+            f"Error: --scope must be one of: {', '.join(sorted(valid_scopes))}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    init_db()
+    conn = _open_conn()
+    try:
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+        repo_root: str = repo_row["path"]
+
+        # --force: delete cached summaries so all levels get regenerated
+        if force:
+            with conn:
+                if scope in ("file", "all"):
+                    conn.execute(
+                        "DELETE FROM summaries WHERE repo_id = ? AND scope = 'file'",
+                        (repo_id,),
+                    )
+                if scope in ("dir", "all"):
+                    conn.execute(
+                        "DELETE FROM summaries WHERE repo_id = ? AND scope = 'directory'",
+                        (repo_id,),
+                    )
+                if scope in ("repo", "all"):
+                    conn.execute(
+                        "DELETE FROM summaries WHERE repo_id = ? AND scope = 'repo'",
+                        (repo_id,),
+                    )
+
+        # Instantiate AI client — raises ValueError if ANTHROPIC_API_KEY is missing
+        try:
+            client = RepolensClient()
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1)
+
+        # Track tokens across all API calls by wrapping client.complete()
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        _orig_complete = client.complete
+
+        def _tracking_complete(prompt: str) -> tuple[str, int, int]:
+            nonlocal total_prompt_tokens, total_completion_tokens
+            result = _orig_complete(prompt)
+            total_prompt_tokens += result[1]
+            total_completion_tokens += result[2]
+            return result
+
+        client.complete = _tracking_complete  # type: ignore[method-assign]
+
+        # ------------------------------------------------------------------
+        # File-level summaries
+        # ------------------------------------------------------------------
+        file_summaries: dict[str, str] = {}
+
+        if scope in ("file", "all"):
+            files = list_files(conn, repo_id)
+            if not files:
+                typer.echo(
+                    "No files found. Run 'repolens ingest' first.", err=True
+                )
+                raise typer.Exit(1)
+
+            for f in files:
+                rel_path: str = f["path"]
+                typer.echo(f"Summarizing file: {rel_path}")
+                file_record = FileRecord(
+                    repo_root=repo_root,
+                    relative_path=rel_path,
+                    extension=f.get("extension") or "",
+                    size_bytes=f.get("size_bytes") or 0,
+                    mtime=f.get("mtime") or 0,
+                    content_hash=f.get("content_hash") or "",
+                )
+                summary = summarize_file(conn, repo_id, file_record, client)
+                file_summaries[rel_path] = summary
+        else:
+            # Load pre-existing file summaries for dir/repo-only runs
+            for row in list_summaries_by_scope(conn, repo_id, "file"):
+                file_summaries[row["target_path"]] = row["summary"]
+
+        # ------------------------------------------------------------------
+        # Directory-level summaries
+        # ------------------------------------------------------------------
+        dir_summaries: dict[str, str] = {}
+
+        if scope in ("dir", "all"):
+            # Group file summaries by parent directory
+            dir_to_files: dict[str, dict[str, str]] = defaultdict(dict)
+            for file_path, file_summary in file_summaries.items():
+                dir_path = os.path.dirname(file_path)
+                dir_to_files[dir_path][file_path] = file_summary
+
+            for dir_path, dir_file_summaries in sorted(dir_to_files.items()):
+                display = dir_path if dir_path else "."
+                typer.echo(f"Summarizing directory: {display}")
+                summary = summarize_directory(
+                    conn, repo_id, dir_path, dir_file_summaries, client
+                )
+                dir_summaries[dir_path] = summary
+        else:
+            # Load pre-existing directory summaries for repo-only runs
+            for row in list_summaries_by_scope(conn, repo_id, "directory"):
+                dir_summaries[row["target_path"]] = row["summary"]
+
+        # ------------------------------------------------------------------
+        # Repo-level summary
+        # ------------------------------------------------------------------
+        if scope in ("repo", "all"):
+            typer.echo("Summarizing repository...")
+            summarize_repo(conn, repo_id, dir_summaries, client)
+
+        # ------------------------------------------------------------------
+        # Usage report
+        # ------------------------------------------------------------------
+        if total_prompt_tokens > 0 or total_completion_tokens > 0:
+            cost = estimate_cost(
+                total_prompt_tokens, total_completion_tokens, client.model
+            )
+            typer.echo(
+                f"\nTokens used: {total_prompt_tokens} prompt"
+                f" + {total_completion_tokens} completion"
+            )
+            typer.echo(f"Estimated cost: ${cost:.4f}")
+        else:
+            typer.echo("\nNo API calls made (all summaries served from cache).")
+
+    finally:
+        conn.close()
 
 
 @app.command()
