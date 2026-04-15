@@ -1,0 +1,559 @@
+tasks:
+
+  # ─── Phase 0: Scaffold ────────────────────────────────────────────────────
+
+  - id: T01
+    title: Project scaffold
+    status: todo
+    depends_on: []
+    goal: >
+      Create the full package directory structure, pyproject.toml with all
+      dependencies, .gitignore, .env.example, and a minimal conftest.py with
+      a temp-DB fixture. Verify pytest collects with zero tests, zero errors.
+    acceptance_criteria:
+      - pyproject.toml exists with [project.dependencies] block
+      - All package directories exist with __init__.py files
+      - pytest runs and exits 0 (no collection errors)
+      - ruff check . exits 0
+      - python -c "import repolens" exits 0
+    validation_commands:
+      - test -f pyproject.toml
+      - pytest --collect-only -q 2>&1 | tail -1 | grep -E "no tests ran|selected"
+      - python -c "import repolens"
+      - ruff check .
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - pyproject.toml
+      - .gitignore
+      - .env.example
+      - repolens/__init__.py
+      - repolens/config.py
+      - repolens/cli/__init__.py
+      - repolens/cli/main.py
+      - repolens/ingestion/__init__.py
+      - repolens/classification/__init__.py
+      - repolens/summarization/__init__.py
+      - repolens/context/__init__.py
+      - repolens/ai/__init__.py
+      - repolens/db/__init__.py
+      - repolens/api/__init__.py
+      - tests/conftest.py
+
+  # ─── Phase 1: Persistence ────────────────────────────────────────────────
+
+  - id: T02
+    title: SQLite schema and migration runner
+    status: todo
+    depends_on:
+      - T01
+    goal: >
+      Implement repolens/db/schema.py. Create all tables (repos, files,
+      summaries, context_bundles, runs, schema_version) with indexes. Write a
+      migration runner that creates the DB on first use and applies any new
+      migrations. DB path from config (REPOLENS_DB env or ~/.repolens/repolens.db).
+    acceptance_criteria:
+      - Running schema.py creates the DB and all 6 tables
+      - Re-running schema.py is idempotent (no errors on existing DB)
+      - All indexes exist in sqlite_master
+      - schema_version table has one row with version=1
+    validation_commands:
+      - python -c "from repolens.db.schema import init_db; import tempfile, os; os.environ['REPOLENS_DB']=tempfile.mktemp(suffix='.db'); init_db()"
+      - python -m pytest tests/test_db.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/db/schema.py
+      - tests/test_db.py
+
+  - id: T03
+    title: Data access layer (repository.py)
+    status: todo
+    depends_on:
+      - T02
+    goal: >
+      Implement repolens/db/repository.py with CRUD functions for all tables.
+      No raw SQL outside this file. Functions: create_repo, get_repo,
+      list_repos, upsert_file, list_files, upsert_summary, get_summary,
+      save_bundle, get_bundle, create_run, update_run, list_runs.
+      All functions accept a sqlite3.Connection.
+    acceptance_criteria:
+      - create_repo / get_repo round-trip works
+      - upsert_file with same path twice updates rather than duplicates
+      - upsert_summary replaces on (repo_id, scope, target_path) conflict
+      - create_run + update_run round-trip works
+      - All tests in test_db.py pass
+    validation_commands:
+      - python -m pytest tests/test_db.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/db/repository.py
+      - tests/test_db.py
+
+  # ─── Phase 2: Ingestion ──────────────────────────────────────────────────
+
+  - id: T04
+    title: File filters (gitignore + custom patterns)
+    status: todo
+    depends_on:
+      - T01
+    goal: >
+      Implement repolens/ingestion/filters.py. Functions: load_gitignore(repo_path),
+      is_ignored(path, gitignore_rules, custom_patterns), is_binary(path),
+      is_oversized(path, max_bytes=1_000_000). Use gitignore-parser for .gitignore
+      support. Binary detection via null byte check on first 8KB.
+    acceptance_criteria:
+      - .git/ directory is filtered out
+      - Files matching .gitignore patterns are filtered
+      - Binary files (e.g. PNG) are detected as binary
+      - Files over 1MB are flagged as oversized
+      - All tests in test_ingestion.py pass
+    validation_commands:
+      - python -m pytest tests/test_ingestion.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/ingestion/filters.py
+      - tests/test_ingestion.py
+      - tests/fixtures/sample_repo/.gitignore
+
+  - id: T05
+    title: Directory scanner
+    status: todo
+    depends_on:
+      - T04
+    goal: >
+      Implement repolens/ingestion/scanner.py. Function: scan_repo(path, custom_ignores=[])
+      returns a list of FileRecord (dataclass: repo_root, relative_path, extension,
+      size_bytes, mtime, content_hash). Applies gitignore and custom filters.
+      Skips binary and oversized files. Uses os.scandir for efficiency.
+    acceptance_criteria:
+      - scan_repo on sample_repo returns expected file list
+      - .git/ and gitignored files are absent from results
+      - Binary files absent from results
+      - content_hash is a valid sha256 hex string
+      - scan_repo on this repo itself completes without error
+    validation_commands:
+      - python -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.'); print(f'{len(files)} files scanned'); assert len(files) > 0"
+      - python -m pytest tests/test_ingestion.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/ingestion/scanner.py
+
+  - id: T06
+    title: CLI ingest command
+    status: todo
+    depends_on:
+      - T03
+      - T05
+    goal: >
+      Implement `repolens ingest <path>` command. Registers the repo in the DB,
+      runs scan, writes all FileRecord rows to files table, prints summary
+      (file count, size, skipped count). `repolens list` shows the registered repo.
+    acceptance_criteria:
+      - repolens ingest . registers current repo and exits 0
+      - repolens list shows the registered repo
+      - Running ingest twice on same path updates rather than duplicates
+      - Printed summary includes file count
+    validation_commands:
+      - python -m repolens.cli.main ingest . 2>&1 | grep -E "file|File"
+      - python -m repolens.cli.main list
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/cli/main.py
+
+  # ─── Phase 3: Classification ─────────────────────────────────────────────
+
+  - id: T07
+    title: File classifier and scorer
+    status: todo
+    depends_on:
+      - T05
+    goal: >
+      Implement repolens/classification/classifier.py. Function: classify_file(relative_path, extension)
+      returns a category string (core|test|config|docs|build|generated|other).
+      Implement scorer in same file: score_file(relative_path, category, size_bytes, mtime)
+      returns float 0.0-1.0. Rules and weights as documented in DESIGN.md.
+    acceptance_criteria:
+      - test_*.py files classify as 'test'
+      - pyproject.toml classifies as 'config'
+      - main.py at root depth scores above 0.8
+      - __pycache__/ files classify as 'generated' with score 0.0
+      - .md files in docs/ classify as 'docs'
+      - All tests in test_classification.py pass
+    validation_commands:
+      - python -m pytest tests/test_classification.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/classification/classifier.py
+      - tests/test_classification.py
+
+  - id: T08
+    title: CLI classify command
+    status: todo
+    depends_on:
+      - T06
+      - T07
+    goal: >
+      Implement `repolens classify <repo>` command. Runs classifier + scorer on
+      all files in the repo, updates classification and importance_score in the
+      files table. Prints a breakdown: count per category, top 5 files by score.
+    acceptance_criteria:
+      - repolens classify 1 (or by path) exits 0
+      - Files table has non-null classification after classify
+      - Output includes category counts
+    validation_commands:
+      - python -m repolens.cli.main classify 1 2>&1 | grep -E "core|test|config"
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/cli/main.py
+
+  # ─── Phase 4: Summarization ──────────────────────────────────────────────
+
+  - id: T09
+    title: Anthropic AI client wrapper
+    status: todo
+    depends_on:
+      - T01
+    goal: >
+      Implement repolens/ai/client.py. Wraps anthropic.Anthropic client.
+      Function: complete(prompt, model, max_tokens) -> (response_text, prompt_tokens, completion_tokens).
+      Reads ANTHROPIC_API_KEY from env (hard fail if missing). Reads REPOLENS_MODEL
+      from env (default claude-opus-4-5). No retry logic for MVP.
+    acceptance_criteria:
+      - client.py imports without error
+      - Missing ANTHROPIC_API_KEY raises a clear ValueError, not an SDK error
+      - complete() returns a tuple of (str, int, int)
+      - test_ai.py mocks the SDK and verifies return shape
+    validation_commands:
+      - python -c "from repolens.ai.client import RepolensClient"
+      - python -m pytest tests/test_ai.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/ai/client.py
+      - tests/test_ai.py
+
+  - id: T10
+    title: Prompt templates
+    status: todo
+    depends_on:
+      - T09
+    goal: >
+      Implement repolens/ai/prompts.py. Functions: file_summary_prompt(path, content),
+      dir_summary_prompt(dir_path, file_summaries_block), repo_summary_prompt(dir_summaries_block),
+      task_execution_prompt(context_bundle, task_description). Each returns a
+      formatted string. No hardcoded model names. Templates match DESIGN.md spec.
+    acceptance_criteria:
+      - All four prompt functions return non-empty strings
+      - file_summary_prompt includes the path and content in output
+      - task_execution_prompt includes both context_bundle and task_description
+      - No test requires an API call (pure string functions)
+    validation_commands:
+      - python -c "from repolens.ai.prompts import file_summary_prompt, task_execution_prompt; print(file_summary_prompt('test.py', 'def foo(): pass')[:50])"
+      - python -m pytest tests/test_ai.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/ai/prompts.py
+
+  - id: T11
+    title: File summarizer with caching
+    status: todo
+    depends_on:
+      - T03
+      - T10
+    goal: >
+      Implement repolens/summarization/file_summarizer.py. Function:
+      summarize_file(conn, repo_id, file_record, client) -> str. Checks
+      summaries table for cached summary with matching content_hash. If found,
+      returns cached. If not, calls AI, stores result, returns text. Caps
+      file content at 50K tokens before sending.
+    acceptance_criteria:
+      - Second call with same content_hash returns cached summary (no API call)
+      - Summary is stored in summaries table with scope='file'
+      - Content over 50K tokens is truncated before API call
+      - Test mocks AI client, verifies cache hit/miss behavior
+    validation_commands:
+      - python -m pytest tests/test_summarization.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/summarization/file_summarizer.py
+      - tests/test_summarization.py
+
+  - id: T12
+    title: Directory and repo summarizer
+    status: todo
+    depends_on:
+      - T11
+    goal: >
+      Implement repolens/summarization/dir_summarizer.py and repo_summarizer.py.
+      dir_summarizer: given a list of file summaries for one directory, call AI
+      to produce a 2-3 sentence directory summary. repo_summarizer: given all
+      directory summaries, produce a 4-6 sentence repo overview. Both cache
+      results in summaries table.
+    acceptance_criteria:
+      - dir_summarizer produces a summary given mocked file summaries
+      - repo_summarizer produces a summary given mocked dir summaries
+      - Both cache results with scope='directory' and scope='repo' respectively
+      - Tests pass without real API calls (mocked client)
+    validation_commands:
+      - python -m pytest tests/test_summarization.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/summarization/dir_summarizer.py
+      - repolens/summarization/repo_summarizer.py
+
+  - id: T13
+    title: CLI summarize command
+    status: todo
+    depends_on:
+      - T08
+      - T12
+    goal: >
+      Implement `repolens summarize <repo> [--scope file|dir|repo|all] [--force]`.
+      --scope all (default) runs all three levels bottom-up. --force ignores cache.
+      Print progress as each file/dir/repo summary is generated.
+      Print token usage and estimated cost at end.
+    acceptance_criteria:
+      - repolens summarize --scope all runs without error on a real repo (requires ANTHROPIC_API_KEY)
+      - repolens summarize --scope file --force regenerates even with cached summaries
+      - Token usage printed at end
+    validation_commands:
+      - python -m repolens.cli.main summarize --help
+      - python -m pytest tests/test_summarization.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/cli/main.py
+
+  # ─── Phase 5: Context Engine ─────────────────────────────────────────────
+
+  - id: T14
+    title: Token counter
+    status: todo
+    depends_on:
+      - T01
+    goal: >
+      Implement repolens/context/token_counter.py. Function: count_tokens(text) -> int.
+      Uses tiktoken with cl100k_base encoding if available. Falls back to
+      len(text) // 4 if tiktoken raises ImportError. Function: estimate_cost(prompt_tokens,
+      completion_tokens, model) -> float (USD).
+    acceptance_criteria:
+      - count_tokens("hello world") returns a positive integer
+      - Falls back gracefully if tiktoken is unavailable
+      - estimate_cost returns a float >= 0
+    validation_commands:
+      - python -c "from repolens.context.token_counter import count_tokens; n = count_tokens('hello world'); assert n > 0; print(f'tokens: {n}')"
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/context/token_counter.py
+
+  - id: T15
+    title: Context packager
+    status: todo
+    depends_on:
+      - T03
+      - T14
+    goal: >
+      Implement repolens/context/packager.py. Function: build_context(conn, repo_id,
+      task_type, token_budget) -> ContextBundle (dataclass: content str, file_paths list,
+      token_count int). Algorithm: sort files by importance_score desc, include
+      full content greedily until budget exhausted, substitute file summary for
+      remaining files. Always prepend repo + directory summaries. Append task type
+      instructions section.
+    acceptance_criteria:
+      - build_context returns a bundle with token_count <= token_budget + 5%
+      - Returned content includes repo summary section
+      - file_paths list reflects which files were included at full content
+      - test_context.py covers budget enforcement and summary fallback
+    validation_commands:
+      - python -m pytest tests/test_context.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/context/packager.py
+      - tests/test_context.py
+
+  - id: T16
+    title: Context exporter and CLI context command
+    status: todo
+    depends_on:
+      - T15
+    goal: >
+      Implement repolens/context/exporter.py with export_markdown(bundle) and
+      export_json(bundle) functions. Implement `repolens context <repo> --task TASK
+      --budget N [--output PATH] [--format markdown|json]`. Saves bundle to
+      context_bundles table. Prints token count and included file list.
+    acceptance_criteria:
+      - repolens context 1 --task analyze --budget 32000 exits 0
+      - Output includes repo summary at top
+      - --format json produces valid JSON
+      - Bundle is saved to context_bundles table
+    validation_commands:
+      - python -m repolens.cli.main context --help
+      - python -m pytest tests/test_context.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/context/exporter.py
+
+  # ─── Phase 6: AI Task Execution ──────────────────────────────────────────
+
+  - id: T17
+    title: Task executor and run logging
+    status: todo
+    depends_on:
+      - T09
+      - T15
+    goal: >
+      Implement repolens/ai/executor.py. Function: execute_task(conn, repo_id,
+      task_type, task_description, token_budget, model) -> Run. Creates a run
+      record (status=running), calls AI, updates run with result, tokens, cost,
+      status=done. On exception: status=failed, error_message set.
+    acceptance_criteria:
+      - execute_task creates a run row with status=running before API call
+      - After completion, run row has status=done, result, prompt_tokens, completion_tokens
+      - On simulated API failure, run row has status=failed with error_message
+      - test_ai.py covers success and failure paths (mocked client)
+    validation_commands:
+      - python -m pytest tests/test_ai.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/ai/executor.py
+
+  - id: T18
+    title: CLI run command
+    status: todo
+    depends_on:
+      - T16
+      - T17
+    goal: >
+      Implement `repolens run <repo> --task TASK [--description TEXT] [--budget N]
+      [--model MODEL] [--dry-run]`. --dry-run prints estimated tokens and cost
+      without calling the API. Normal run prints result to stdout and logs to DB.
+    acceptance_criteria:
+      - repolens run 1 --task analyze --dry-run exits 0 and prints token estimate
+      - repolens run --help shows all flags
+      - Run is logged in runs table after execution
+    validation_commands:
+      - python -m repolens.cli.main run --help
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/cli/main.py
+
+  # ─── Phase 7: Status and List Commands ───────────────────────────────────
+
+  - id: T19
+    title: CLI status, list, and runs commands
+    status: todo
+    depends_on:
+      - T08
+      - T17
+    goal: >
+      Implement three remaining CLI commands. `repolens status [<repo>]`: shows
+      file count, classification breakdown, summary coverage %, last scan time.
+      `repolens list`: table of all repos with ID, name, path, file count.
+      `repolens runs [<repo>] [--limit N]`: table of recent runs with status,
+      task, model, tokens, cost.
+    acceptance_criteria:
+      - repolens list exits 0 and shows registered repos
+      - repolens status 1 shows classification breakdown
+      - repolens runs exits 0
+    validation_commands:
+      - python -m repolens.cli.main list
+      - python -m repolens.cli.main runs --limit 5
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/cli/main.py
+
+  # ─── Phase 8: FastAPI Layer ───────────────────────────────────────────────
+
+  - id: T20
+    title: FastAPI app skeleton and /repos endpoints
+    status: todo
+    depends_on:
+      - T06
+      - T08
+    goal: >
+      Implement repolens/api/main.py. FastAPI app with lifespan that opens and
+      closes the DB connection. Implement: GET /repos, POST /repos, GET /repos/{id},
+      POST /repos/{id}/scan, POST /repos/{id}/classify.
+      All responses are JSON. Errors use HTTPException with detail.
+    acceptance_criteria:
+      - uvicorn repolens.api.main:app --port 8765 starts without error
+      - GET /repos returns JSON array
+      - POST /repos with valid path registers repo and returns 201
+      - GET /repos/999 returns 404
+      - All tests in test_api.py pass
+    validation_commands:
+      - python -c "from repolens.api.main import app"
+      - python -m pytest tests/test_api.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/api/main.py
+      - tests/test_api.py
+
+  - id: T21
+    title: FastAPI /context and /run endpoints
+    status: todo
+    depends_on:
+      - T16
+      - T18
+      - T20
+    goal: >
+      Add to repolens/api/main.py: GET /repos/{id}/context?task=analyze&budget=32000,
+      POST /repos/{id}/run {task_type, description, budget, model},
+      GET /runs/{id}, GET /runs?repo_id=1&limit=10.
+      /run is synchronous for MVP (no background tasks).
+    acceptance_criteria:
+      - GET /repos/{id}/context returns context bundle JSON
+      - POST /repos/{id}/run returns run result synchronously
+      - GET /runs/{id} returns run details
+      - All new endpoints covered by test_api.py
+    validation_commands:
+      - python -m pytest tests/test_api.py -q
+    documentation_targets:
+      - CHANGELOG.md
+    files_expected:
+      - repolens/api/main.py
+
+  # ─── Phase 9: Integration and Smoke Test ─────────────────────────────────
+
+  - id: T22
+    title: End-to-end smoke test on a real repo
+    status: todo
+    depends_on:
+      - T19
+      - T21
+    goal: >
+      Run the full pipeline on a small real repo (this repo is fine). Ingest,
+      classify, summarize (--scope all), build context bundle, and run an
+      analyze task. Document the output in a smoke_test_output.md file.
+      Verify costs are logged and the run shows as done.
+    acceptance_criteria:
+      - All pipeline steps complete without error
+      - smoke_test_output.md contains the AI result
+      - repolens runs shows the run with status=done
+      - Total estimated cost is printed and reasonable (< $1 for a small repo)
+    validation_commands:
+      - test -f smoke_test_output.md
+      - python -m repolens.cli.main runs --limit 1 2>&1 | grep "done"
+      - python -m repolens.cli.main health 2>&1 | grep -i "ok\|healthy" || python -m repolens.cli.main list
+    documentation_targets:
+      - smoke_test_output.md
+      - CHANGELOG.md
+    files_expected:
+      - smoke_test_output.md
