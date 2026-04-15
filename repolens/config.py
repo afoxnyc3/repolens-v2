@@ -31,3 +31,8 @@ def get_db_path() -> Path:
     default = Path.home() / ".repolens" / "repolens.db"
     default.parent.mkdir(parents=True, exist_ok=True)
     return default
+
+
+# Module-level constant for convenience — resolved once at import time.
+# Respects REPOLENS_DB env var (set before importing this module).
+DB_PATH: Path = get_db_path()

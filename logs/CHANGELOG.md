@@ -40,3 +40,9 @@ scanner.py: FileRecord dataclass + scan_repo via os.scandir. Filters: gitignore,
 ## 2026-04-15T15:31:45.843520+00:00 | T10 → done
 Four pure prompt functions matching DESIGN.md 7.2 exactly. 20 new tests added to test_ai.py (34 total passing). Fixed malformed YAML complex-key in validation_commands.
 
+## 2026-04-15T16:00:06.382344+00:00 | T06 → in_progress
+
+
+## 2026-04-15T16:01:34.948168+00:00 | T06 → done
+ingest and list commands implemented; ingest on this repo: 60 files scanned, 6224 skipped (binary/oversized/gitignored); idempotent on re-run
+

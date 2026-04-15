@@ -138,7 +138,7 @@ tasks:
   - repolens/ingestion/scanner.py
 - id: T06
   title: CLI ingest command
-  status: todo
+  status: done
   depends_on:
   - T03
   - T05

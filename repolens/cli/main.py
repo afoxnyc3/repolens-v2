@@ -1,8 +1,23 @@
 """Repolens CLI — entry point for all commands."""
 
+import os
+import sqlite3
+import time
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import typer
+
+from repolens import config
+from repolens.db.repository import (
+    create_repo,
+    get_repo,
+    list_repos as db_list_repos,
+    upsert_file,
+)
+from repolens.db.schema import init_db
+from repolens.ingestion.scanner import scan_repo
 
 app = typer.Typer(
     name="repolens",
@@ -11,14 +26,84 @@ app = typer.Typer(
 )
 
 
+def _open_conn() -> sqlite3.Connection:
+    """Open a connection to the configured DB with row_factory set."""
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 @app.command()
 def ingest(
     path: str = typer.Argument(..., help="Path to the repository to ingest."),
     name: Optional[str] = typer.Option(None, "--name", help="Human-readable repo name."),
     ignore: Optional[list[str]] = typer.Option(None, "--ignore", help="Extra ignore patterns."),
 ) -> None:
-    """Register a repository and run initial scan + classification."""
-    typer.echo(f"[stub] ingest {path}")
+    """Register a repository and scan all text files into the DB."""
+    abs_path = Path(path).resolve()
+    if not abs_path.exists():
+        typer.echo(f"Error: path does not exist: {abs_path}", err=True)
+        raise typer.Exit(1)
+    if not abs_path.is_dir():
+        typer.echo(f"Error: path is not a directory: {abs_path}", err=True)
+        raise typer.Exit(1)
+
+    init_db()
+    conn = _open_conn()
+    try:
+        # Create or reuse existing repo record
+        existing = get_repo(conn, str(abs_path))
+        if existing is None:
+            repo_name = name or abs_path.name
+            repo_id = create_repo(conn, str(abs_path), repo_name)
+        else:
+            repo_id = existing["id"]
+            repo_name = existing["name"]
+
+        custom_ignores = list(ignore) if ignore else []
+        records = scan_repo(str(abs_path), custom_ignores)
+
+        # Quick total-file count for skipped calculation (all regular files, no filter)
+        total_files = sum(
+            len(files)
+            for _, _, files in os.walk(str(abs_path))
+        )
+        skipped = total_files - len(records)
+
+        # Upsert every scanned file
+        for rec in records:
+            upsert_file(
+                conn,
+                repo_id,
+                rec.relative_path,
+                extension=rec.extension,
+                size_bytes=rec.size_bytes,
+                mtime=rec.mtime,
+                content_hash=rec.content_hash,
+            )
+
+        # Refresh repo-level aggregate stats
+        now = int(time.time())
+        total_size = sum(r.size_bytes for r in records)
+        with conn:
+            conn.execute(
+                """
+                UPDATE repos
+                SET file_count = ?,
+                    total_size_bytes = ?,
+                    last_scanned_at = ?,
+                    ingested_at = COALESCE(ingested_at, ?)
+                WHERE id = ?
+                """,
+                (len(records), total_size, now, now, repo_id),
+            )
+    finally:
+        conn.close()
+
+    typer.echo(
+        f"Ingested {repo_name}: {len(records)} files scanned, {skipped} skipped"
+    )
 
 
 @app.command()
@@ -83,7 +168,39 @@ def status(
 @app.command(name="list")
 def list_repos() -> None:
     """List all tracked repositories."""
-    typer.echo("[stub] list")
+    init_db()
+    conn = _open_conn()
+    try:
+        repos = db_list_repos(conn)
+    finally:
+        conn.close()
+
+    if not repos:
+        typer.echo("No repositories tracked yet.")
+        return
+
+    # Column widths
+    id_w, name_w, path_w, files_w, scan_w = 4, 24, 48, 6, 19
+
+    header = (
+        f"{'ID':<{id_w}}  {'Name':<{name_w}}  {'Path':<{path_w}}  "
+        f"{'Files':>{files_w}}  {'Last scanned':<{scan_w}}"
+    )
+    typer.echo(header)
+    typer.echo("-" * len(header))
+
+    for r in repos:
+        last_ts = r.get("last_scanned_at")
+        last = (
+            datetime.fromtimestamp(last_ts).strftime("%Y-%m-%d %H:%M")
+            if last_ts
+            else "never"
+        )
+        file_count = r.get("file_count") or 0
+        typer.echo(
+            f"{r['id']:<{id_w}}  {r['name']:<{name_w}}  {r['path']:<{path_w}}  "
+            f"{file_count:>{files_w}}  {last:<{scan_w}}"
+        )
 
 
 @app.command()
