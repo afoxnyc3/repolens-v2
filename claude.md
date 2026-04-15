@@ -1,5 +1,27 @@
 # CLAUDE.md — Roadmap Loop Agent Brief
 
+## Project: Repolens v2
+
+AI-native repo intelligence tool. Python CLI + SQLite. Local-first.
+Root: the directory containing this file.
+
+## Environment Setup
+
+**Always activate the venv before running any Python, pytest, or ruff commands:**
+
+```bash
+source .venv/bin/activate
+```
+
+If `.venv` doesn't exist yet, create it first:
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+```
+
+All validation_commands in tasks.yaml use `.venv/bin/` prefixes — they will work whether or not the venv is activated in your shell.
+
+---
+
 ## Operating Model
 
 You are executing a deterministic roadmap. Python owns control. You own implementation.

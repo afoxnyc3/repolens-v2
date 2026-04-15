@@ -1,0 +1,5 @@
+{
+  "task_id": "T01",
+  "summary": "Scaffold complete. pyproject.toml (fixed build backend from setuptools.backends.legacy to setuptools.build_meta), all package dirs with __init__.py, conftest.py with tmp_db and sample_repo fixtures, test_scaffold.py for importability check, .venv with all deps installed. CLAUDE.md updated with venv activation instructions. T01 validation passing.",
+  "at": "2026-04-15T12:31:04.511080+00:00"
+}
