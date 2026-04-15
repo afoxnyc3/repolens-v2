@@ -12,8 +12,8 @@ tasks:
   - pyproject.toml exists with [project.dependencies] block
   - All package directories exist with __init__.py files
   - pytest runs and exits 0 (no collection errors)
-  - ruff check . exits 0
-  - python -c "import repolens" exits 0
+  - .venv/bin/ruff check . exits 0
+  - .venv/bin/python3 -c "import repolens" exits 0
   validation_commands:
   - test -f pyproject.toml
   - .venv/bin/pytest --collect-only -q
@@ -54,9 +54,9 @@ tasks:
   - All indexes exist in sqlite_master
   - schema_version table has one row with version=1
   validation_commands:
-  - python -c "from repolens.db.schema import init_db; import tempfile, os; os.environ['REPOLENS_DB']=tempfile.mktemp(suffix='.db');
+  - .venv/bin/python3 -c "from repolens.db.schema import init_db; import tempfile, os; os.environ['REPOLENS_DB']=tempfile.mktemp(suffix='.db');
     init_db()"
-  - python -m pytest tests/test_db.py -q
+  - .venv/bin/pytest tests/test_db.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -80,7 +80,7 @@ tasks:
   - create_run + update_run round-trip works
   - All tests in test_db.py pass
   validation_commands:
-  - python -m pytest tests/test_db.py -q
+  - .venv/bin/pytest tests/test_db.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -104,7 +104,7 @@ tasks:
   - Files over 1MB are flagged as oversized
   - All tests in test_ingestion.py pass
   validation_commands:
-  - python -m pytest tests/test_ingestion.py -q
+  - .venv/bin/pytest tests/test_ingestion.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -129,9 +129,9 @@ tasks:
   - content_hash is a valid sha256 hex string
   - scan_repo on this repo itself completes without error
   validation_commands:
-  - python3 -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.');
+  - .venv/bin/python3 -c "from repolens.ingestion.scanner import scan_repo; files = scan_repo('.');
     assert len(files) > 0, 'scan returned 0 files'; print(len(files))"
-  - python -m pytest tests/test_ingestion.py -q
+  - .venv/bin/pytest tests/test_ingestion.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -153,8 +153,8 @@ tasks:
   - Running ingest twice on same path updates rather than duplicates
   - Printed summary includes file count
   validation_commands:
-  - python -m repolens.cli.main ingest . 2>&1 | grep -E "file|File"
-  - python -m repolens.cli.main list
+  - .venv/bin/python3 -m repolens.cli.main ingest . 2>&1 | grep -E "file|File"
+  - .venv/bin/python3 -m repolens.cli.main list
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -178,7 +178,7 @@ tasks:
   - .md files in docs/ classify as 'docs'
   - All tests in test_classification.py pass
   validation_commands:
-  - python -m pytest tests/test_classification.py -q
+  - .venv/bin/pytest tests/test_classification.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -200,7 +200,7 @@ tasks:
   - Files table has non-null classification after classify
   - Output includes category counts
   validation_commands:
-  - python -m repolens.cli.main classify 1 2>&1 | grep -E "core|test|config"
+  - .venv/bin/python3 -m repolens.cli.main classify 1 2>&1 | grep -E "core|test|config"
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -222,8 +222,8 @@ tasks:
   - complete() returns a tuple of (str, int, int)
   - test_ai.py mocks the SDK and verifies return shape
   validation_commands:
-  - python -c "from repolens.ai.client import RepolensClient"
-  - python -m pytest tests/test_ai.py -q
+  - .venv/bin/python3 -c "from repolens.ai.client import RepolensClient"
+  - .venv/bin/pytest tests/test_ai.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -249,7 +249,7 @@ tasks:
   - ? python -c "from repolens.ai.prompts import file_summary_prompt, task_execution_prompt;
       print(file_summary_prompt('test.py', 'def foo()
     : pass')[:50])"
-  - python -m pytest tests/test_ai.py -q
+  - .venv/bin/pytest tests/test_ai.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -272,7 +272,7 @@ tasks:
   - Content over 50K tokens is truncated before API call
   - Test mocks AI client, verifies cache hit/miss behavior
   validation_commands:
-  - python -m pytest tests/test_summarization.py -q
+  - .venv/bin/pytest tests/test_summarization.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -295,7 +295,7 @@ tasks:
   - Both cache results with scope='directory' and scope='repo' respectively
   - Tests pass without real API calls (mocked client)
   validation_commands:
-  - python -m pytest tests/test_summarization.py -q
+  - .venv/bin/pytest tests/test_summarization.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -318,8 +318,8 @@ tasks:
   - repolens summarize --scope file --force regenerates even with cached summaries
   - Token usage printed at end
   validation_commands:
-  - python -m repolens.cli.main summarize --help
-  - python -m pytest tests/test_summarization.py -q
+  - .venv/bin/python3 -m repolens.cli.main summarize --help
+  - .venv/bin/pytest tests/test_summarization.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -340,7 +340,7 @@ tasks:
   - Falls back gracefully if tiktoken is unavailable
   - estimate_cost returns a float >= 0
   validation_commands:
-  - python3 -c "from repolens.context.token_counter import count_tokens; n = count_tokens('test');
+  - .venv/bin/python3 -c "from repolens.context.token_counter import count_tokens; n = count_tokens('test');
     assert n > 0, 'count_tokens returned 0'; print(n)"
   documentation_targets:
   - CHANGELOG.md
@@ -366,7 +366,7 @@ tasks:
   - file_paths list reflects which files were included at full content
   - test_context.py covers budget enforcement and summary fallback
   validation_commands:
-  - python -m pytest tests/test_context.py -q
+  - .venv/bin/pytest tests/test_context.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -389,8 +389,8 @@ tasks:
   - --format json produces valid JSON
   - Bundle is saved to context_bundles table
   validation_commands:
-  - python -m repolens.cli.main context --help
-  - python -m pytest tests/test_context.py -q
+  - .venv/bin/python3 -m repolens.cli.main context --help
+  - .venv/bin/pytest tests/test_context.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -413,7 +413,7 @@ tasks:
   - On simulated API failure, run row has status=failed with error_message
   - test_ai.py covers success and failure paths (mocked client)
   validation_commands:
-  - python -m pytest tests/test_ai.py -q
+  - .venv/bin/pytest tests/test_ai.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -434,7 +434,7 @@ tasks:
   - repolens run --help shows all flags
   - Run is logged in runs table after execution
   validation_commands:
-  - python -m repolens.cli.main run --help
+  - .venv/bin/python3 -m repolens.cli.main run --help
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -456,8 +456,8 @@ tasks:
   - repolens status 1 shows classification breakdown
   - repolens runs exits 0
   validation_commands:
-  - python -m repolens.cli.main list
-  - python -m repolens.cli.main runs --limit 5
+  - .venv/bin/python3 -m repolens.cli.main list
+  - .venv/bin/python3 -m repolens.cli.main runs --limit 5
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -481,8 +481,8 @@ tasks:
   - GET /repos/999 returns 404
   - All tests in test_api.py pass
   validation_commands:
-  - python -c "from repolens.api.main import app"
-  - python -m pytest tests/test_api.py -q
+  - .venv/bin/python3 -c "from repolens.api.main import app"
+  - .venv/bin/pytest tests/test_api.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -506,7 +506,7 @@ tasks:
   - GET /runs/{id} returns run details
   - All new endpoints covered by test_api.py
   validation_commands:
-  - python -m pytest tests/test_api.py -q
+  - .venv/bin/pytest tests/test_api.py -q
   documentation_targets:
   - CHANGELOG.md
   files_expected:
@@ -530,8 +530,8 @@ tasks:
   - Total estimated cost is printed and reasonable (< $1 for a small repo)
   validation_commands:
   - test -f smoke_test_output.md
-  - python -m repolens.cli.main runs --limit 1 2>&1 | grep "done"
-  - python -m repolens.cli.main health 2>&1 | grep -i "ok\|healthy" || python -m repolens.cli.main
+  - .venv/bin/python3 -m repolens.cli.main runs --limit 1 2>&1 | grep "done"
+  - .venv/bin/python3 -m repolens.cli.main health 2>&1 | grep -i "ok\|healthy" || python -m repolens.cli.main
     list
   documentation_targets:
   - smoke_test_output.md
