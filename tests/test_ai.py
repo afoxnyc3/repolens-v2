@@ -157,3 +157,113 @@ class TestComplete:
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
         repolens_client.complete("hello")
         mock_sdk.messages.create.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Prompt templates
+# ---------------------------------------------------------------------------
+
+
+from repolens.ai.prompts import (  # noqa: E402
+    dir_summary_prompt,
+    file_summary_prompt,
+    repo_summary_prompt,
+    task_execution_prompt,
+)
+
+
+class TestFileSummaryPrompt:
+    def test_returns_non_empty_string(self):
+        result = file_summary_prompt("src/foo.py", "def foo(): pass")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_includes_path(self):
+        result = file_summary_prompt("src/foo.py", "def foo(): pass")
+        assert "src/foo.py" in result
+
+    def test_includes_content(self):
+        content = "def foo(): pass"
+        result = file_summary_prompt("src/foo.py", content)
+        assert content in result
+
+    def test_includes_language_when_provided(self):
+        result = file_summary_prompt("src/foo.py", "def foo(): pass", language="Python")
+        assert "Python" in result
+
+    def test_language_defaults_to_empty(self):
+        result = file_summary_prompt("src/foo.py", "def foo(): pass")
+        # Should not raise; language line present but blank
+        assert "Language:" in result
+
+    def test_no_api_calls_made(self):
+        """Pure function — no I/O or network."""
+        with patch("anthropic.Anthropic") as mock_sdk:
+            file_summary_prompt("src/foo.py", "content")
+            mock_sdk.assert_not_called()
+
+
+class TestDirSummaryPrompt:
+    def test_returns_non_empty_string(self):
+        result = dir_summary_prompt("src/utils", "foo.py: utility helpers")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_includes_dir_path(self):
+        result = dir_summary_prompt("src/utils", "foo.py: utility helpers")
+        assert "src/utils" in result
+
+    def test_includes_file_summaries_block(self):
+        block = "foo.py: utility helpers\nbar.py: constants"
+        result = dir_summary_prompt("src/utils", block)
+        assert block in result
+
+    def test_dir_path_has_trailing_slash(self):
+        result = dir_summary_prompt("src/utils", "block")
+        assert "src/utils/" in result
+
+
+class TestRepoSummaryPrompt:
+    def test_returns_non_empty_string(self):
+        result = repo_summary_prompt("src/: core logic\ntests/: test suite")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_includes_dir_summaries_block(self):
+        block = "src/: core logic\ntests/: test suite"
+        result = repo_summary_prompt(block)
+        assert block in result
+
+
+class TestTaskExecutionPrompt:
+    def test_returns_non_empty_string(self):
+        result = task_execution_prompt("context here", "what does this repo do?")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_includes_context_bundle(self):
+        bundle = "unique-context-xyz"
+        result = task_execution_prompt(bundle, "some task")
+        assert bundle in result
+
+    def test_includes_task_description(self):
+        task = "unique-task-description-abc"
+        result = task_execution_prompt("context", task)
+        assert task in result
+
+    def test_both_inputs_clearly_delimited(self):
+        result = task_execution_prompt("ctx", "task")
+        assert "=== REPOSITORY CONTEXT ===" in result
+        assert "=== TASK ===" in result
+
+    def test_context_appears_before_task(self):
+        bundle = "CONTEXT_MARKER"
+        task = "TASK_MARKER"
+        result = task_execution_prompt(bundle, task)
+        assert result.index(bundle) < result.index(task)
+
+    def test_no_api_calls_made(self):
+        """Pure function — no I/O or network."""
+        with patch("anthropic.Anthropic") as mock_sdk:
+            task_execution_prompt("ctx", "task")
+            mock_sdk.assert_not_called()

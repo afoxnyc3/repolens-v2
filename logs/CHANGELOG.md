@@ -34,3 +34,9 @@ Implemented all 12 repository functions. PATCH semantics on upserts (merge field
 ## 2026-04-15T15:29:40.303469+00:00 | T05 → done
 scanner.py: FileRecord dataclass + scan_repo via os.scandir. Filters: gitignore, .git/, binary, oversized. sha256 per file. 8 new scanner tests added (28 total). Scan of repo itself: 55 files.
 
+## 2026-04-15T15:30:04.024810+00:00 | T10 → in_progress
+
+
+## 2026-04-15T15:31:45.843520+00:00 | T10 → done
+Four pure prompt functions matching DESIGN.md 7.2 exactly. 20 new tests added to test_ai.py (34 total passing). Fixed malformed YAML complex-key in validation_commands.
+

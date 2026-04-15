@@ -231,7 +231,7 @@ tasks:
   - tests/test_ai.py
 - id: T10
   title: Prompt templates
-  status: todo
+  status: done
   depends_on:
   - T09
   goal: 'Implement repolens/ai/prompts.py. Functions: file_summary_prompt(path, content),
@@ -246,9 +246,10 @@ tasks:
   - task_execution_prompt includes both context_bundle and task_description
   - No test requires an API call (pure string functions)
   validation_commands:
-  - ? python -c "from repolens.ai.prompts import file_summary_prompt, task_execution_prompt;
-      print(file_summary_prompt('test.py', 'def foo()
-    : pass')[:50])"
+  - .venv/bin/python3 -c "from repolens.ai.prompts import file_summary_prompt, task_execution_prompt;
+    assert len(file_summary_prompt('test.py', 'x')) > 0; assert 'test.py' in file_summary_prompt('test.py',
+    'x'); assert len(task_execution_prompt('ctx', 'task')) > 0; print('prompt imports
+    ok')"
   - .venv/bin/pytest tests/test_ai.py -q
   documentation_targets:
   - CHANGELOG.md
