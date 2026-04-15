@@ -12,6 +12,7 @@ import typer
 
 from repolens import config
 from repolens.ai.client import RepolensClient
+from repolens.ai.executor import execute_task
 from repolens.classification.classifier import classify_file, score_file
 from repolens.context.token_counter import estimate_cost
 from repolens.context.exporter import export_json, export_markdown
@@ -419,7 +420,48 @@ def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print estimate without calling AI."),
 ) -> None:
     """Build context bundle and run an AI task."""
-    typer.echo(f"[stub] run {repo} --task {task}")
+    resolved_model = model or os.getenv("REPOLENS_MODEL", "claude-opus-4-5")
+    task_description = description or task
+
+    init_db()
+    conn = _open_conn()
+    try:
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+
+        if dry_run:
+            try:
+                bundle = build_context(conn, repo_id, task, token_budget=budget)
+                token_estimate = bundle.token_count
+            except Exception as exc:
+                typer.echo(
+                    f"Warning: could not build context ({exc}). Token estimate unavailable.",
+                    err=True,
+                )
+                token_estimate = 0
+
+            cost_estimate = estimate_cost(token_estimate, 0, resolved_model)
+            typer.echo(f"Estimated tokens: {token_estimate}")
+            typer.echo(f"Estimated cost:   ${cost_estimate:.4f}")
+            return
+
+        try:
+            run_result = execute_task(
+                conn,
+                repo_id,
+                task,
+                task_description,
+                token_budget=budget,
+                model=resolved_model,
+            )
+        except Exception as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(run_result["result"])
+
+    finally:
+        conn.close()
 
 
 @app.command()
