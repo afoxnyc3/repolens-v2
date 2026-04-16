@@ -17,7 +17,9 @@ Options considered:
 
 ## Decision
 
-**Split every prompt builder into `(system, user)` tuples. The system block carries invariant instructions. `RepolensClient.complete()` attaches `cache_control={"type":"ephemeral"}` to the system block when it meets the minimum cacheable size for the model family (1024 tokens for Opus/Sonnet, 2048 for Haiku). Task-execution prompts put the full repository context inside the system block so a session of multiple runs against one repo reuses the cached context.**
+**Split every prompt builder into `(system, user)` tuples. The system block carries invariant instructions. `RepolensClient.complete()` attaches `cache_control={"type":"ephemeral"}` to the system block when it meets the minimum cacheable size — 2048 tokens across all model families. Task-execution prompts put the full repository context inside the system block so a session of multiple runs against one repo reuses the cached context.**
+
+> **Threshold note:** Anthropic's published minimum is 1024 tokens for Opus/Sonnet 4 and 2048 for Haiku. Empirically (Opus 4.7, 2026-04-16) a system block of 1417 tokens did *not* trigger a cache write — `cache_creation_input_tokens` came back 0 — while a 9403-token block cached fully. We use **2048 across the board** as a conservative floor so small system blocks don't pay the round-trip cost of carrying a `cache_control` marker that the server then ignores. If Anthropic clarifies the docs or the floor changes, update `_MIN_CACHE_TOKENS_BY_FAMILY` in `repolens/ai/client.py`.
 
 ## Reasoning
 
