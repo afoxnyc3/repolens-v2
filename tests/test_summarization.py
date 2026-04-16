@@ -81,10 +81,20 @@ def _mock_client(
     prompt_tokens: int = 10,
     completion_tokens: int = 5,
     model: str = "claude-test-model",
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> MagicMock:
     """Return a mock RepolensClient whose .complete() returns fixed values."""
+    from repolens.ai.client import CompletionResult
+
     client = MagicMock()
-    client.complete.return_value = (summary, prompt_tokens, completion_tokens)
+    client.complete.return_value = CompletionResult(
+        summary,
+        prompt_tokens,
+        completion_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+    )
     client.model = model
     return client
 
@@ -312,7 +322,11 @@ class TestLargeFileTruncation:
         summarize_file(db, 1, file_record, client)
 
         # Inspect what was actually passed to complete()
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         # The raw content inside the prompt must not exceed limit
         # (prompt itself adds overhead, but the file body is capped)
         assert "x" * (_CONTENT_CHAR_LIMIT + 1) not in called_prompt
@@ -335,7 +349,11 @@ class TestLargeFileTruncation:
         client = _mock_client()
         summarize_file(db, 1, file_record, client)
 
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         assert content in called_prompt
 
     def test_exactly_at_limit_is_not_truncated(self, db, tmp_path):
@@ -356,7 +374,11 @@ class TestLargeFileTruncation:
         client = _mock_client()
         summarize_file(db, 1, file_record, client)
 
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         assert "y" * _CONTENT_CHAR_LIMIT in called_prompt
 
 
@@ -478,7 +500,11 @@ class TestDirectorySummarizerCacheMiss:
         client = _mock_client()
         summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
 
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         assert "repolens/db" in called_prompt
 
     def test_prompt_contains_file_summaries(self, db):
@@ -486,7 +512,11 @@ class TestDirectorySummarizerCacheMiss:
         client = _mock_client()
         summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
 
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         assert "Handles DB CRUD." in called_prompt
         assert "Defines the schema." in called_prompt
 
@@ -595,7 +625,11 @@ class TestRepoSummarizerCacheMiss:
         client = _mock_client()
         summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
 
-        called_prompt: str = client.complete.call_args[0][0]
+        # complete() now takes a (system, user) tuple; join for substring checks.
+        _call_arg = client.complete.call_args[0][0]
+        called_prompt: str = (
+            "\n".join(_call_arg) if isinstance(_call_arg, tuple) else _call_arg
+        )
         assert "Database layer." in called_prompt
         assert "AI client and prompts." in called_prompt
         assert "Scanner and filters." in called_prompt

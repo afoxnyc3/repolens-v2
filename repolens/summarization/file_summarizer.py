@@ -123,7 +123,7 @@ def summarize_file(
         file_record: FileRecord from the scanner; must have repo_root,
                      relative_path, extension, and content_hash populated.
         client:      A RepolensClient (or compatible mock). Must expose
-                     .complete(prompt) -> (str, int, int) and .model -> str.
+                     .complete(prompt) -> CompletionResult and .model -> str.
 
     Returns:
         The summary text (2-4 sentences from the AI, or the cached copy).
@@ -161,7 +161,7 @@ def summarize_file(
     # ------------------------------------------------------------------
     # 6. Call AI
     # ------------------------------------------------------------------
-    summary_text, prompt_tokens, completion_tokens = client.complete(prompt)
+    result = client.complete(prompt)
 
     # ------------------------------------------------------------------
     # 7. Store result
@@ -171,14 +171,14 @@ def summarize_file(
         repo_id,
         "file",
         file_record.relative_path,
-        summary_text,
+        result.text,
         content_hash=file_record.content_hash,
         model=client.model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
+        prompt_tokens=result.input_tokens,
+        completion_tokens=result.output_tokens,
     )
 
     # ------------------------------------------------------------------
     # 8. Return
     # ------------------------------------------------------------------
-    return summary_text
+    return result.text

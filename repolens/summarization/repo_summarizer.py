@@ -38,7 +38,7 @@ def summarize_repo(
         dir_summaries: Mapping of directory path -> summary text covering
                        the whole repository. Used to build the prompt.
         client:        A RepolensClient (or compatible mock). Must expose
-                       .complete(prompt) -> (str, int, int) and .model.
+                       .complete(prompt) -> CompletionResult and .model.
 
     Returns:
         The summary text (4-6 sentences from the AI, or the cached copy).
@@ -61,7 +61,7 @@ def summarize_repo(
     # ------------------------------------------------------------------
     # 3. Call AI
     # ------------------------------------------------------------------
-    summary_text, prompt_tokens, completion_tokens = client.complete(prompt)
+    result = client.complete(prompt)
 
     # ------------------------------------------------------------------
     # 4. Store result
@@ -71,13 +71,13 @@ def summarize_repo(
         repo_id,
         "repo",
         _REPO_TARGET_PATH,
-        summary_text,
+        result.text,
         model=client.model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
+        prompt_tokens=result.input_tokens,
+        completion_tokens=result.output_tokens,
     )
 
     # ------------------------------------------------------------------
     # 5. Return
     # ------------------------------------------------------------------
-    return summary_text
+    return result.text
