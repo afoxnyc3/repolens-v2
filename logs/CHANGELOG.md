@@ -103,3 +103,6 @@ Added GET /repos/{id}/context (build + save bundle), POST /repos/{id}/run (sync 
 ## 2026-04-16T21:24:07.379883+00:00 | T22 → done
 End-to-end smoke against real Anthropic API. Probe verified ADR-004 caching: 9906 cache_creation_tokens on warm-up, 9906 cache_read_tokens on second probe within TTL. Real run analyze cost $0.5415 (under $1 ceiling). smoke_test_output.md persisted at repo root. Empirical finding: claude-opus-4-7 cache-write threshold is well above the documented 1024-token minimum; client now uses 2048 floor across all families.
 
+## 2026-04-16T21:25:38.057721+00:00 | ALL → complete
+Roadmap finished — ROADMAP_COMPLETE signal received.
+
