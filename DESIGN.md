@@ -1,7 +1,7 @@
 # Repolens v2 — Design Document
 
-> Last updated: 2026-04-15
-> Stack: Python 3.12+, SQLite, FastAPI (thin), Anthropic SDK, Click CLI
+> Last updated: 2026-04-16
+> Stack: Python 3.12+, SQLite, FastAPI (thin), Anthropic SDK, Typer CLI
 
 ---
 
@@ -72,7 +72,10 @@ Scoring inputs:
 
 Score is deterministic given the same repo state. No AI involved in scoring.
 
-Key files: `scorer.py`
+Key files: `repolens/scoring/scorer.py`
+
+(Originally drafted inside `classification/classifier.py` and extracted
+2026-04-16 to match this section; back-compat re-export retained.)
 
 ### 2.4 Summarization (`repolens/summarization/`)
 
@@ -121,7 +124,9 @@ Responsibilities:
 - Execute AI tasks against context bundles
 - Log every run (tokens, cost, result) to SQLite
 
-Model selection: default `claude-opus-4-5`. Configurable via `--model` flag or `REPOLENS_MODEL` env var.
+Model selection: default `claude-opus-4-7`. Configurable via `--model` flag or `REPOLENS_MODEL` env var. Model ID pinning policy: see [ADR-006](docs/decisions/ADR-006-model-ids.md).
+
+Prompt caching: every call uses a structured `(system, user)` prompt. The system block is tagged with `cache_control={"type": "ephemeral"}` when it meets the model-family minimum (1024 tokens for Opus/Sonnet, 2048 for Haiku). Summarizer system blocks are identical across a run so cache hits are the norm after the first call. Task-execution system blocks include the full context bundle, so repeated questions against the same repo within a 5-minute TTL window read from cache at 10% of the input rate. See [ADR-004](docs/decisions/ADR-004-prompt-caching.md).
 
 Key files: `client.py`, `prompts.py`, `executor.py`
 
@@ -194,22 +199,24 @@ CREATE TABLE context_bundles (
     created_at   INTEGER DEFAULT (unixepoch())
 );
 
--- AI task run log
+-- AI task run log (schema v2 — see repolens/db/migrations.py)
 CREATE TABLE runs (
-    id               INTEGER PRIMARY KEY,
-    repo_id          INTEGER REFERENCES repos(id) ON DELETE SET NULL,
-    bundle_id        INTEGER REFERENCES context_bundles(id) ON DELETE SET NULL,
-    task_type        TEXT,
-    task_description TEXT,
-    model            TEXT,
-    prompt_tokens    INTEGER,
-    completion_tokens INTEGER,
-    cost_usd         REAL,
-    result           TEXT,
-    status           TEXT DEFAULT 'pending',  -- pending|running|done|failed
-    error_message    TEXT,
-    created_at       INTEGER DEFAULT (unixepoch()),
-    completed_at     INTEGER
+    id                    INTEGER PRIMARY KEY,
+    repo_id               INTEGER REFERENCES repos(id) ON DELETE SET NULL,
+    bundle_id             INTEGER REFERENCES context_bundles(id) ON DELETE SET NULL,
+    task_type             TEXT,
+    task_description      TEXT,
+    model                 TEXT,
+    prompt_tokens         INTEGER,
+    completion_tokens     INTEGER,
+    cache_read_tokens     INTEGER DEFAULT 0,  -- v2: cache reads at 0.1× input
+    cache_creation_tokens INTEGER DEFAULT 0,  -- v2: cache writes at 1.25× input (5m TTL)
+    cost_usd              REAL,
+    result                TEXT,
+    status                TEXT DEFAULT 'pending',  -- pending|running|done|failed
+    error_message         TEXT,
+    created_at            INTEGER DEFAULT (unixepoch()),
+    completed_at          INTEGER
 );
 
 -- Schema version tracking
@@ -430,9 +437,15 @@ If the context is insufficient, say so explicitly rather than guessing.
 
 ```python
 # repolens/config.py
-REPOLENS_MODEL = os.getenv("REPOLENS_MODEL", "claude-opus-4-5")
+REPOLENS_MODEL = os.getenv("REPOLENS_MODEL", "claude-opus-4-7")
 REPOLENS_MAX_TOKENS = int(os.getenv("REPOLENS_MAX_TOKENS", "4096"))
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]  # hard fail if missing
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]  # hard fail at call time
+
+# repolens/ai/client.py — timeouts and retries are set at construction time.
+REPOLENS_TIMEOUT = int(os.getenv("REPOLENS_TIMEOUT", "60"))
+REPOLENS_MAX_RETRIES = int(os.getenv("REPOLENS_MAX_RETRIES", "2"))
+# REPOLENS_ACCURATE_TOKENS=1 switches count_tokens() to the native
+# Anthropic endpoint (ADR-005).
 ```
 
 ---
@@ -457,9 +470,9 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]  # hard fail if missing
 ```toml
 [project]
 dependencies = [
-    "anthropic>=0.40.0",
-    "typer[all]>=0.12.0",
-    "fastapi>=0.115.0",
+    "anthropic>=0.65.0",
+    "typer>=0.24.0",
+    "fastapi>=0.130.0",
     "uvicorn[standard]>=0.30.0",
     "gitignore-parser>=0.1.11",
     "tiktoken>=0.8.0",
@@ -469,8 +482,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "ruff>=0.6.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.15.0",
     "httpx>=0.27.0",   # for FastAPI test client
 ]
 ```
