@@ -14,8 +14,8 @@ def get_api_key() -> str:
     return key
 
 
-# Model selection
-REPOLENS_MODEL: str = os.getenv("REPOLENS_MODEL", "claude-opus-4-5")
+# Model selection — default reviewed each release; see docs/decisions/ADR-006.
+REPOLENS_MODEL: str = os.getenv("REPOLENS_MODEL", "claude-opus-4-7")
 
 # Max tokens for AI completions
 REPOLENS_MAX_TOKENS: int = int(os.getenv("REPOLENS_MAX_TOKENS", "4096"))
