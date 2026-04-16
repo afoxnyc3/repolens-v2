@@ -13,10 +13,11 @@ import typer
 from repolens import config
 from repolens.ai.client import RepolensClient
 from repolens.ai.executor import execute_task
-from repolens.classification.classifier import classify_file, score_file
+from repolens.classification.classifier import classify_file
 from repolens.context.token_counter import estimate_cost
 from repolens.context.exporter import export_json, export_markdown
 from repolens.context.packager import build_context
+from repolens.db.connection import open_conn
 from repolens.db.repository import (
     create_repo,
     get_repo,
@@ -29,6 +30,7 @@ from repolens.db.repository import (
 )
 from repolens.db.schema import init_db
 from repolens.ingestion.scanner import FileRecord, scan_repo
+from repolens.scoring.scorer import score_file
 from repolens.summarization.dir_summarizer import summarize_directory
 from repolens.summarization.file_summarizer import summarize_file
 from repolens.summarization.repo_summarizer import summarize_repo
@@ -41,7 +43,11 @@ app = typer.Typer(
 
 
 def _open_conn() -> sqlite3.Connection:
-    """Open a connection to the configured DB with row_factory set."""
+    """Deprecated — kept as a thin shim for tests that patch it.
+
+    Prefer :func:`repolens.db.connection.open_conn` (a context manager)
+    which guarantees close on exit.
+    """
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
@@ -124,8 +130,63 @@ def ingest(
 def scan(
     repo: str = typer.Argument(..., help="Repo ID, name, or path."),
 ) -> None:
-    """Re-scan an already-registered repository."""
-    typer.echo(f"[stub] scan {repo}")
+    """Re-scan a registered repository and refresh file metadata.
+
+    Walks the repo's stored path, applies ignore rules (no custom extras —
+    that's an :command:`ingest`-only option), upserts file metadata and
+    content hashes, and refreshes the repo-level aggregate stats
+    (``file_count``, ``total_size_bytes``, ``last_scanned_at``).
+
+    Exits 1 if the repo is not registered or its stored path no longer
+    exists on disk.
+    """
+    init_db()
+    with open_conn() as conn:
+        repo_row = _resolve_repo(conn, repo)
+        repo_id: int = repo_row["id"]
+        repo_name: str = repo_row["name"]
+        repo_path: str = repo_row["path"]
+
+        if not Path(repo_path).exists():
+            typer.echo(
+                f"Error: repo path no longer exists on disk: {repo_path}",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        records = scan_repo(repo_path, [])
+
+        total_files = sum(len(files) for _, _, files in os.walk(repo_path))
+        skipped = total_files - len(records)
+
+        for rec in records:
+            upsert_file(
+                conn,
+                repo_id,
+                rec.relative_path,
+                extension=rec.extension,
+                size_bytes=rec.size_bytes,
+                mtime=rec.mtime,
+                content_hash=rec.content_hash,
+            )
+
+        now = int(time.time())
+        total_size = sum(r.size_bytes for r in records)
+        with conn:
+            conn.execute(
+                """
+                UPDATE repos
+                SET file_count = ?,
+                    total_size_bytes = ?,
+                    last_scanned_at = ?
+                WHERE id = ?
+                """,
+                (len(records), total_size, now, repo_id),
+            )
+
+    typer.echo(
+        f"Rescanned {repo_name}: {len(records)} files scanned, {skipped} skipped"
+    )
 
 
 def _resolve_repo(conn: sqlite3.Connection, repo: str) -> dict:
@@ -263,13 +324,18 @@ def summarize(
         # Track tokens across all API calls by wrapping client.complete()
         total_prompt_tokens = 0
         total_completion_tokens = 0
+        total_cache_read = 0
+        total_cache_creation = 0
         _orig_complete = client.complete
 
-        def _tracking_complete(prompt: str) -> tuple[str, int, int]:
+        def _tracking_complete(prompt: str):
             nonlocal total_prompt_tokens, total_completion_tokens
+            nonlocal total_cache_read, total_cache_creation
             result = _orig_complete(prompt)
-            total_prompt_tokens += result[1]
-            total_completion_tokens += result[2]
+            total_prompt_tokens += result.input_tokens
+            total_completion_tokens += result.output_tokens
+            total_cache_read += result.cache_read_tokens
+            total_cache_creation += result.cache_creation_tokens
             return result
 
         client.complete = _tracking_complete  # type: ignore[method-assign]
@@ -347,6 +413,11 @@ def summarize(
                 f"\nTokens used: {total_prompt_tokens} prompt"
                 f" + {total_completion_tokens} completion"
             )
+            if total_cache_read or total_cache_creation:
+                typer.echo(
+                    f"Prompt cache: {total_cache_read} read"
+                    f" + {total_cache_creation} created"
+                )
             typer.echo(f"Estimated cost: ${cost:.4f}")
         else:
             typer.echo("\nNo API calls made (all summaries served from cache).")
@@ -420,7 +491,7 @@ def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print estimate without calling AI."),
 ) -> None:
     """Build context bundle and run an AI task."""
-    resolved_model = model or os.getenv("REPOLENS_MODEL", "claude-opus-4-5")
+    resolved_model = model or os.getenv("REPOLENS_MODEL", "claude-opus-4-7")
     task_description = description or task
 
     init_db()
@@ -432,14 +503,21 @@ def run(
         if dry_run:
             try:
                 bundle = build_context(conn, repo_id, task, token_budget=budget)
-                token_estimate = bundle.token_count
             except Exception as exc:
+                # Surface the root cause — historically this was swallowed
+                # and the dry-run silently reported zero tokens.
                 typer.echo(
-                    f"Warning: could not build context ({exc}). Token estimate unavailable.",
+                    f"Error: could not build context ({type(exc).__name__}: {exc}).",
                     err=True,
                 )
-                token_estimate = 0
+                typer.echo(
+                    "Has the repo been ingested and classified?"
+                    " Try: repolens ingest <path> && repolens classify <repo>",
+                    err=True,
+                )
+                raise typer.Exit(1) from exc
 
+            token_estimate = bundle.token_count
             cost_estimate = estimate_cost(token_estimate, 0, resolved_model)
             typer.echo(f"Estimated tokens: {token_estimate}")
             typer.echo(f"Estimated cost:   ${cost_estimate:.4f}")
