@@ -164,18 +164,25 @@ def test_end_to_end_smoke_on_this_repo(tmp_path):
     # Collect cache numbers from the runs + summaries tables.  Summarizers
     # don't persist cache fields on summaries (they're scoped to runs), so
     # we read them off the response via a direct call.
+    # Empirically, claude-opus-4-7 only writes a cache entry when the system
+    # block is well over 2048 tokens.  Build a ~3000-token coherent system
+    # block by re-listing all the file paths in the repo.  The model still
+    # produces a normal text reply because the user message is a real Q.
+    file_path_listing = "\n".join(f["path"] for f in list_files(conn, repo_id))
+    big_system = (
+        "You are an assistant answering questions about a Python codebase.\n"
+        "Below is the full file inventory of the repository under analysis.\n"
+        "Use it as authoritative context when answering.\n\n"
+        "=== FILE INVENTORY ===\n"
+        + file_path_listing
+        + "\n=== END FILE INVENTORY ===\n"
+    ) * 8  # repeat 8x to comfortably clear the empirical cache-write threshold
     cache_probe = client.complete(
-        (
-            "You are answering one question. " * 200,   # ~5000 chars, > 1024 token threshold
-            "Return the single word OK.",
-        ),
+        (big_system, "Reply with only the word OK.")
     )
     # First probe warms the cache → creation > 0.
     cache_probe2 = client.complete(
-        (
-            "You are answering one question. " * 200,
-            "Return the single word OK.",
-        ),
+        (big_system, "Reply with only the word OK.")
     )
     # Second probe hits the cache → read > 0.
     assert cache_probe.cache_creation_tokens > 0, (

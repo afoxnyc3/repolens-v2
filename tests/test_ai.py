@@ -235,8 +235,9 @@ class TestComplete:
         """System blocks above the min-tokens threshold get ephemeral caching."""
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
-        # 5000 characters > 1024 token threshold for Opus (rough len//4 estimate).
-        big_system = "x" * 5000
+        # 10000 characters → ~2500 tokens via the rough len//4 estimate,
+        # comfortably over the 2048 floor used for every family.
+        big_system = "x" * 10000
         repolens_client.complete((big_system, "u"), model="claude-opus-4-7")
         call_kwargs = mock_sdk.messages.create.call_args.kwargs
         assert call_kwargs["system"][0].get("cache_control") == {"type": "ephemeral"}
@@ -245,7 +246,7 @@ class TestComplete:
         """System blocks below the threshold are not cached (server would no-op)."""
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
-        tiny_system = "short"  # way under 1024 tokens
+        tiny_system = "short"  # way under 2048 tokens
         repolens_client.complete((tiny_system, "u"), model="claude-opus-4-7")
         call_kwargs = mock_sdk.messages.create.call_args.kwargs
         assert "cache_control" not in call_kwargs["system"][0]
@@ -254,19 +255,19 @@ class TestComplete:
         """cache=False must omit cache_control even on large system blocks."""
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
-        big_system = "x" * 5000
+        big_system = "x" * 10000
         repolens_client.complete(
             (big_system, "u"), model="claude-opus-4-7", cache=False
         )
         call_kwargs = mock_sdk.messages.create.call_args.kwargs
         assert "cache_control" not in call_kwargs["system"][0]
 
-    def test_haiku_threshold_is_higher_than_opus(self, client):
-        """Haiku requires >=2048 tokens; a 5000-char block passes Opus but
-        should still pass Haiku too (5000/4 = 1250 tokens)."""
+    def test_borderline_block_below_2048_tokens_skips_cache(self, client):
+        """A block at ~1250 tokens (5000 chars / 4) is below the 2048 floor
+        and must not get a cache breakpoint, regardless of model family."""
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
-        borderline = "x" * 5000  # ~1250 tokens — above Opus, below Haiku
+        borderline = "x" * 5000  # ~1250 tokens
         repolens_client.complete(
             (borderline, "u"), model="claude-haiku-4-5"
         )

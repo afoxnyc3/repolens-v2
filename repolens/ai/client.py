@@ -30,14 +30,18 @@ class CompletionResult(NamedTuple):
     cache_creation_tokens: int
 
 
-# Minimum cacheable prefix size (in tokens) per model family.  Enforced by
-# Anthropic — smaller prefixes are silently not cached.  See ADR-004.
+# Minimum cacheable prefix size (in tokens) per model family.  Empirically
+# the published 1024-token minimum is not enough for Opus 4.x to actually
+# write a cache entry — observed cache_creation=0 at 1417 tokens, =N at
+# 9403 tokens.  We use 2048 across the board as a conservative floor so
+# small system blocks don't pay the cache-control marker round-trip cost
+# without actually getting cached.  See ADR-004.
 _MIN_CACHE_TOKENS_BY_FAMILY: dict[str, int] = {
-    "opus": 1024,
-    "sonnet": 1024,
+    "opus": 2048,
+    "sonnet": 2048,
     "haiku": 2048,
 }
-_DEFAULT_MIN_CACHE_TOKENS = 1024
+_DEFAULT_MIN_CACHE_TOKENS = 2048
 
 
 def _min_cache_tokens_for(model: str) -> int:
@@ -154,8 +158,18 @@ class RepolensClient:
         response = self._client.messages.create(**request)
 
         usage = response.usage
+
+        # Concatenate every text block; tolerate non-text blocks (tool_use,
+        # thinking, etc.) and empty content lists without crashing.
+        text_parts = [
+            getattr(block, "text", "")
+            for block in (response.content or [])
+            if getattr(block, "type", "text") == "text"
+        ]
+        text = "".join(text_parts)
+
         return CompletionResult(
-            text=response.content[0].text,
+            text=text,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             # cache_* fields arrive only when caching is enabled on the
