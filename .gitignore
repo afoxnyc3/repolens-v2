@@ -22,3 +22,5 @@ htmlcov/
 logs/*.log
 smoke_test_output.md
 .venv/
+.context_snapshot.json
+.claude/scheduled_tasks.lock

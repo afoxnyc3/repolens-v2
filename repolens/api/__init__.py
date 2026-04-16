@@ -1,3 +1,5 @@
-"""API package: FastAPI application (deferred per ADR-003)."""
+"""API package: FastAPI application."""
 
-app = None  # deferred per ADR-003
+from repolens.api.main import app
+
+__all__ = ["app"]
