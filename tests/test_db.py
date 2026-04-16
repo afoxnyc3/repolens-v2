@@ -167,11 +167,11 @@ def test_schema_version_row_present(initialised_db: sqlite3.Connection) -> None:
     assert row is not None, "schema_version must have at least one row after init_db()"
 
 
-def test_schema_version_is_one(initialised_db: sqlite3.Connection) -> None:
+def test_schema_version_is_current(initialised_db: sqlite3.Connection) -> None:
     row = initialised_db.execute(
-        "SELECT version FROM schema_version WHERE version=1"
+        "SELECT version FROM schema_version WHERE version=?", (CURRENT_VERSION,)
     ).fetchone()
-    assert row is not None, "schema_version must contain a row with version=1"
+    assert row is not None, f"schema_version must contain version={CURRENT_VERSION}"
 
 
 def test_get_schema_version_helper(initialised_db: sqlite3.Connection) -> None:
@@ -418,6 +418,65 @@ def test_list_files_returns_plain_dicts(conn: sqlite3.Connection, repo_id: int) 
     upsert_file(conn, repo_id, "x.py")
     rows = list_files(conn, repo_id)
     assert all(isinstance(r, dict) for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# list_files: order_by whitelist guards against SQL injection
+# ---------------------------------------------------------------------------
+
+
+class TestListFilesOrderByWhitelist:
+    """order_by is interpolated into SQL — must be validated against a whitelist."""
+
+    @pytest.mark.parametrize(
+        "order_by",
+        [
+            "id",
+            "path ASC",
+            "importance_score DESC",
+            "size_bytes ASC",
+            "mtime DESC",
+            "classification",
+            "token_estimate ASC",
+        ],
+    )
+    def test_accepts_allowed_columns_and_directions(
+        self, conn: sqlite3.Connection, repo_id: int, order_by: str
+    ) -> None:
+        upsert_file(conn, repo_id, "a.py", importance_score=0.1)
+        upsert_file(conn, repo_id, "b.py", importance_score=0.9)
+        # Should not raise
+        rows = list_files(conn, repo_id, order_by=order_by)
+        assert len(rows) == 2
+
+    @pytest.mark.parametrize(
+        "bad_order",
+        [
+            "; DROP TABLE files; --",
+            "id; SELECT 1",
+            "importance_score DESC, id",  # comma-separated not allowed
+            "random()",
+            "NOT_A_COLUMN",
+            "path DESCEND",
+            "",
+            " ",
+            "1",
+        ],
+    )
+    def test_rejects_injection_attempts_and_unknown_columns(
+        self, conn: sqlite3.Connection, repo_id: int, bad_order: str
+    ) -> None:
+        upsert_file(conn, repo_id, "x.py")
+        with pytest.raises(ValueError, match="invalid order_by"):
+            list_files(conn, repo_id, order_by=bad_order)
+
+    def test_rejects_case_insensitive_match(
+        self, conn: sqlite3.Connection, repo_id: int
+    ) -> None:
+        """Whitelist is case-sensitive — lowercase direction is rejected."""
+        upsert_file(conn, repo_id, "x.py")
+        with pytest.raises(ValueError):
+            list_files(conn, repo_id, order_by="importance_score desc")
 
 
 # ---------------------------------------------------------------------------
