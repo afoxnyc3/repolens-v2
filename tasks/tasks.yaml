@@ -465,7 +465,7 @@ tasks:
   - repolens/cli/main.py
 - id: T20
   title: FastAPI app skeleton and /repos endpoints
-  status: todo
+  status: done
   depends_on:
   - T06
   - T08
@@ -491,7 +491,7 @@ tasks:
   - tests/test_api.py
 - id: T21
   title: FastAPI /context and /run endpoints
-  status: todo
+  status: done
   depends_on:
   - T16
   - T18
