@@ -9,7 +9,13 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from repolens.ai.client import RepolensClient
+from repolens.ai.client import CompletionResult, RepolensClient
+
+
+def _cr(text: str, input_tokens: int, output_tokens: int,
+        cache_read: int = 0, cache_creation: int = 0) -> CompletionResult:
+    """Short-form factory for CompletionResult instances in test mocks."""
+    return CompletionResult(text, input_tokens, output_tokens, cache_read, cache_creation)
 
 
 # ---------------------------------------------------------------------------
@@ -17,9 +23,24 @@ from repolens.ai.client import RepolensClient
 # ---------------------------------------------------------------------------
 
 
-def _make_response(text: str, input_tokens: int, output_tokens: int):
-    """Build a mock Anthropic messages.create() response."""
-    usage = SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
+def _make_response(
+    text: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_input_tokens: int = 0,
+    cache_creation_input_tokens: int = 0,
+):
+    """Build a mock Anthropic messages.create() response.
+
+    Cache fields default to 0 to mirror a non-caching call; pass explicit
+    values to exercise the cache-aware paths.
+    """
+    usage = SimpleNamespace(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_input_tokens=cache_read_input_tokens,
+        cache_creation_input_tokens=cache_creation_input_tokens,
+    )
     content_block = SimpleNamespace(text=text)
     return SimpleNamespace(content=[content_block], usage=usage)
 
@@ -61,7 +82,7 @@ class TestRepolensClientInit:
         monkeypatch.delenv("REPOLENS_MODEL", raising=False)
         with patch("anthropic.Anthropic"):
             client = RepolensClient()
-        assert client._default_model == "claude-opus-4-5"
+        assert client._default_model == "claude-opus-4-7"
 
     def test_default_max_tokens_from_env(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -93,35 +114,75 @@ class TestComplete:
             instance = MockSdk.return_value
             yield RepolensClient(), instance
 
-    def test_returns_three_tuple(self, client):
+    def test_returns_completion_result_named_tuple(self, client):
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("hello", 10, 5)
         result = repolens_client.complete("what is 2+2")
+        # CompletionResult is a NamedTuple with 5 fields.
         assert isinstance(result, tuple)
-        assert len(result) == 3
+        assert len(result) == 5
+        assert hasattr(result, "text")
+        assert hasattr(result, "input_tokens")
+        assert hasattr(result, "output_tokens")
+        assert hasattr(result, "cache_read_tokens")
+        assert hasattr(result, "cache_creation_tokens")
 
     def test_return_types(self, client):
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("hello", 10, 5)
-        text, prompt_tokens, completion_tokens = repolens_client.complete("hi")
-        assert isinstance(text, str)
-        assert isinstance(prompt_tokens, int)
-        assert isinstance(completion_tokens, int)
+        result = repolens_client.complete("hi")
+        assert isinstance(result.text, str)
+        assert isinstance(result.input_tokens, int)
+        assert isinstance(result.output_tokens, int)
+        assert isinstance(result.cache_read_tokens, int)
+        assert isinstance(result.cache_creation_tokens, int)
 
     def test_returns_correct_values(self, client):
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("answer", 42, 7)
-        text, prompt_tokens, completion_tokens = repolens_client.complete("question")
-        assert text == "answer"
-        assert prompt_tokens == 42
-        assert completion_tokens == 7
+        result = repolens_client.complete("question")
+        assert result.text == "answer"
+        assert result.input_tokens == 42
+        assert result.output_tokens == 7
+        assert result.cache_read_tokens == 0
+        assert result.cache_creation_tokens == 0
+
+    def test_captures_cache_read_tokens(self, client):
+        """Cache read tokens from usage must flow through to the result."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response(
+            "ok", 100, 20, cache_read_input_tokens=900
+        )
+        result = repolens_client.complete("hi")
+        assert result.cache_read_tokens == 900
+
+    def test_captures_cache_creation_tokens(self, client):
+        """Cache creation tokens from usage must flow through to the result."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response(
+            "ok", 100, 20, cache_creation_input_tokens=1500
+        )
+        result = repolens_client.complete("hi")
+        assert result.cache_creation_tokens == 1500
+
+    def test_cache_fields_default_to_zero_when_missing_from_usage(self, client):
+        """Older SDKs omit cache_* fields — guard with getattr defaulting to 0."""
+        repolens_client, mock_sdk = client
+        bare_usage = SimpleNamespace(input_tokens=10, output_tokens=5)
+        bare_response = SimpleNamespace(
+            content=[SimpleNamespace(text="ok")], usage=bare_usage
+        )
+        mock_sdk.messages.create.return_value = bare_response
+        result = repolens_client.complete("hi")
+        assert result.cache_read_tokens == 0
+        assert result.cache_creation_tokens == 0
 
     def test_uses_default_model(self, client):
         repolens_client, mock_sdk = client
         mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
         repolens_client.complete("hello")
         call_kwargs = mock_sdk.messages.create.call_args.kwargs
-        assert call_kwargs["model"] == "claude-opus-4-5"
+        assert call_kwargs["model"] == "claude-opus-4-7"
 
     def test_uses_default_max_tokens(self, client):
         repolens_client, mock_sdk = client
@@ -154,6 +215,64 @@ class TestComplete:
         assert messages[0]["role"] == "user"
         assert messages[0]["content"] == "my prompt"
 
+    def test_bare_string_prompt_omits_system_block(self, client):
+        """Bare-string form keeps backwards-compatible behaviour (no system)."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        repolens_client.complete("bare")
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert "system" not in call_kwargs
+
+    def test_tuple_prompt_splits_system_and_user(self, client):
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        repolens_client.complete(("sys text", "user text"))
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert call_kwargs["system"][0]["text"] == "sys text"
+        assert call_kwargs["messages"][0]["content"] == "user text"
+
+    def test_large_system_block_gets_cache_control(self, client):
+        """System blocks above the min-tokens threshold get ephemeral caching."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        # 5000 characters > 1024 token threshold for Opus (rough len//4 estimate).
+        big_system = "x" * 5000
+        repolens_client.complete((big_system, "u"), model="claude-opus-4-7")
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert call_kwargs["system"][0].get("cache_control") == {"type": "ephemeral"}
+
+    def test_small_system_block_skips_cache_control(self, client):
+        """System blocks below the threshold are not cached (server would no-op)."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        tiny_system = "short"  # way under 1024 tokens
+        repolens_client.complete((tiny_system, "u"), model="claude-opus-4-7")
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert "cache_control" not in call_kwargs["system"][0]
+
+    def test_cache_false_disables_breakpoint(self, client):
+        """cache=False must omit cache_control even on large system blocks."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        big_system = "x" * 5000
+        repolens_client.complete(
+            (big_system, "u"), model="claude-opus-4-7", cache=False
+        )
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert "cache_control" not in call_kwargs["system"][0]
+
+    def test_haiku_threshold_is_higher_than_opus(self, client):
+        """Haiku requires >=2048 tokens; a 5000-char block passes Opus but
+        should still pass Haiku too (5000/4 = 1250 tokens)."""
+        repolens_client, mock_sdk = client
+        mock_sdk.messages.create.return_value = _make_response("ok", 1, 1)
+        borderline = "x" * 5000  # ~1250 tokens — above Opus, below Haiku
+        repolens_client.complete(
+            (borderline, "u"), model="claude-haiku-4-5"
+        )
+        call_kwargs = mock_sdk.messages.create.call_args.kwargs
+        assert "cache_control" not in call_kwargs["system"][0]
+
     def test_no_real_api_call(self, client):
         """Verify mock intercepts — no network traffic."""
         repolens_client, mock_sdk = client
@@ -176,28 +295,39 @@ from repolens.ai.prompts import (  # noqa: E402
 
 
 class TestFileSummaryPrompt:
-    def test_returns_non_empty_string(self):
+    def test_returns_system_user_tuple(self):
         result = file_summary_prompt("src/foo.py", "def foo(): pass")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        system, user = result
+        assert isinstance(system, str) and isinstance(user, str)
+        assert len(system) > 0 and len(user) > 0
 
-    def test_includes_path(self):
-        result = file_summary_prompt("src/foo.py", "def foo(): pass")
-        assert "src/foo.py" in result
+    def test_path_goes_in_user_block(self):
+        system, user = file_summary_prompt("src/foo.py", "def foo(): pass")
+        assert "src/foo.py" in user
 
-    def test_includes_content(self):
+    def test_content_goes_in_user_block(self):
         content = "def foo(): pass"
-        result = file_summary_prompt("src/foo.py", content)
-        assert content in result
+        system, user = file_summary_prompt("src/foo.py", content)
+        assert content in user
 
-    def test_includes_language_when_provided(self):
-        result = file_summary_prompt("src/foo.py", "def foo(): pass", language="Python")
-        assert "Python" in result
+    def test_system_is_invariant_across_calls(self):
+        """System block must be identical regardless of file payload — this is
+        what makes prompt caching effective."""
+        sys1, _ = file_summary_prompt("a.py", "x")
+        sys2, _ = file_summary_prompt("b.py", "completely different")
+        assert sys1 == sys2
 
-    def test_language_defaults_to_empty(self):
-        result = file_summary_prompt("src/foo.py", "def foo(): pass")
-        # Should not raise; language line present but blank
-        assert "Language:" in result
+    def test_language_appears_in_user_block(self):
+        system, user = file_summary_prompt(
+            "src/foo.py", "def foo(): pass", language="Python"
+        )
+        assert "Python" in user
+
+    def test_language_label_always_present_in_user(self):
+        system, user = file_summary_prompt("src/foo.py", "def foo(): pass")
+        assert "Language:" in user
 
     def test_no_api_calls_made(self):
         """Pure function — no I/O or network."""
@@ -207,63 +337,72 @@ class TestFileSummaryPrompt:
 
 
 class TestDirSummaryPrompt:
-    def test_returns_non_empty_string(self):
+    def test_returns_system_user_tuple(self):
         result = dir_summary_prompt("src/utils", "foo.py: utility helpers")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, tuple)
+        assert len(result) == 2
 
-    def test_includes_dir_path(self):
-        result = dir_summary_prompt("src/utils", "foo.py: utility helpers")
-        assert "src/utils" in result
+    def test_dir_path_goes_in_user_block(self):
+        system, user = dir_summary_prompt("src/utils", "foo.py: utility helpers")
+        assert "src/utils" in user
 
-    def test_includes_file_summaries_block(self):
+    def test_file_summaries_block_goes_in_user(self):
         block = "foo.py: utility helpers\nbar.py: constants"
-        result = dir_summary_prompt("src/utils", block)
-        assert block in result
+        system, user = dir_summary_prompt("src/utils", block)
+        assert block in user
 
-    def test_dir_path_has_trailing_slash(self):
-        result = dir_summary_prompt("src/utils", "block")
-        assert "src/utils/" in result
+    def test_dir_path_has_trailing_slash_in_user(self):
+        system, user = dir_summary_prompt("src/utils", "block")
+        assert "src/utils/" in user
+
+    def test_system_is_invariant(self):
+        sys1, _ = dir_summary_prompt("a/", "x")
+        sys2, _ = dir_summary_prompt("b/c/", "y")
+        assert sys1 == sys2
 
 
 class TestRepoSummaryPrompt:
-    def test_returns_non_empty_string(self):
-        result = repo_summary_prompt("src/: core logic\ntests/: test suite")
-        assert isinstance(result, str)
-        assert len(result) > 0
+    def test_returns_system_user_tuple(self):
+        result = repo_summary_prompt("src/: core\ntests/: suite")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
 
-    def test_includes_dir_summaries_block(self):
+    def test_dir_summaries_block_goes_in_user(self):
         block = "src/: core logic\ntests/: test suite"
-        result = repo_summary_prompt(block)
-        assert block in result
+        system, user = repo_summary_prompt(block)
+        assert block in user
+
+    def test_system_is_invariant(self):
+        sys1, _ = repo_summary_prompt("a")
+        sys2, _ = repo_summary_prompt("b")
+        assert sys1 == sys2
 
 
 class TestTaskExecutionPrompt:
-    def test_returns_non_empty_string(self):
+    def test_returns_system_user_tuple(self):
         result = task_execution_prompt("context here", "what does this repo do?")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, tuple)
+        assert len(result) == 2
 
-    def test_includes_context_bundle(self):
+    def test_context_bundle_goes_in_system_for_caching(self):
+        """Stable repo context lives in the system block so it can be cached
+        across multiple tasks run against the same repo."""
         bundle = "unique-context-xyz"
-        result = task_execution_prompt(bundle, "some task")
-        assert bundle in result
+        system, user = task_execution_prompt(bundle, "some task")
+        assert bundle in system
 
-    def test_includes_task_description(self):
+    def test_task_description_goes_in_user_block(self):
         task = "unique-task-description-abc"
-        result = task_execution_prompt("context", task)
-        assert task in result
+        system, user = task_execution_prompt("context", task)
+        assert task in user
 
-    def test_both_inputs_clearly_delimited(self):
-        result = task_execution_prompt("ctx", "task")
-        assert "=== REPOSITORY CONTEXT ===" in result
-        assert "=== TASK ===" in result
+    def test_context_section_header_in_system(self):
+        system, user = task_execution_prompt("ctx", "task")
+        assert "=== REPOSITORY CONTEXT ===" in system
 
-    def test_context_appears_before_task(self):
-        bundle = "CONTEXT_MARKER"
-        task = "TASK_MARKER"
-        result = task_execution_prompt(bundle, task)
-        assert result.index(bundle) < result.index(task)
+    def test_task_section_header_in_user(self):
+        system, user = task_execution_prompt("ctx", "task")
+        assert "=== TASK ===" in user
 
     def test_no_api_calls_made(self):
         """Pure function — no I/O or network."""
@@ -314,7 +453,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("answer text", 50, 20)
+            MockClient.return_value.complete.return_value = _cr("answer text", 50, 20)
             result = execute_task(db_conn, repo_id, "ask", "what does this do?")
 
         assert "run_id" in result
@@ -331,7 +470,7 @@ class TestExecuteTaskSuccess:
             # At this point the run row should already exist
             run = get_run(db_conn, 1)
             captured_run_id.append(run["id"] if run else None)
-            return "ok", 10, 5
+            return _cr("ok", 10, 5)
 
         with (
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
@@ -348,7 +487,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("done result", 30, 15)
+            MockClient.return_value.complete.return_value = _cr("done result", 30, 15)
             result = execute_task(db_conn, repo_id, "ask", "task desc")
 
         run = get_run(db_conn, result["run_id"])
@@ -360,7 +499,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("stored result", 10, 5)
+            MockClient.return_value.complete.return_value = _cr("stored result", 10, 5)
             result = execute_task(db_conn, repo_id, "ask", "task desc")
 
         run = get_run(db_conn, result["run_id"])
@@ -372,12 +511,44 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("text", 111, 222)
+            MockClient.return_value.complete.return_value = _cr("text", 111, 222)
             result = execute_task(db_conn, repo_id, "ask", "task desc")
 
         run = get_run(db_conn, result["run_id"])
         assert run["prompt_tokens"] == 111
         assert run["completion_tokens"] == 222
+
+    def test_run_stores_cache_tokens(self, db_conn, repo_id, monkeypatch):
+        """Cache read + creation tokens from the API must land in the runs row."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        with (
+            patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
+            patch("repolens.ai.executor.RepolensClient") as MockClient,
+        ):
+            MockClient.return_value.complete.return_value = _cr(
+                "text", 100, 50, cache_read=800, cache_creation=1200
+            )
+            result = execute_task(db_conn, repo_id, "ask", "task desc")
+
+        run = get_run(db_conn, result["run_id"])
+        assert run["cache_read_tokens"] == 800
+        assert run["cache_creation_tokens"] == 1200
+        # Return dict also surfaces cache fields
+        assert result["cache_read_tokens"] == 800
+        assert result["cache_creation_tokens"] == 1200
+
+    def test_run_cache_tokens_default_to_zero(self, db_conn, repo_id, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        with (
+            patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
+            patch("repolens.ai.executor.RepolensClient") as MockClient,
+        ):
+            MockClient.return_value.complete.return_value = _cr("text", 10, 5)
+            result = execute_task(db_conn, repo_id, "ask", "task desc")
+
+        run = get_run(db_conn, result["run_id"])
+        assert run["cache_read_tokens"] == 0
+        assert run["cache_creation_tokens"] == 0
 
     def test_run_stores_cost(self, db_conn, repo_id, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -385,7 +556,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("text", 100, 100)
+            MockClient.return_value.complete.return_value = _cr("text", 100, 100)
             result = execute_task(db_conn, repo_id, "ask", "task desc")
 
         run = get_run(db_conn, result["run_id"])
@@ -403,7 +574,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("text", 10, 5)
+            MockClient.return_value.complete.return_value = _cr("text", 10, 5)
             execute_task(db_conn, repo_id, "ask", "task desc")
             call_kwargs = MockClient.return_value.complete.call_args
             used_model = call_kwargs[1].get("model") or call_kwargs[0][1]
@@ -418,7 +589,7 @@ class TestExecuteTaskSuccess:
             patch("repolens.ai.executor.build_context", return_value=_make_bundle()),
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("text", 10, 5)
+            MockClient.return_value.complete.return_value = _cr("text", 10, 5)
             execute_task(
                 db_conn, repo_id, "ask", "task desc", model="claude-override-model"
             )
@@ -435,7 +606,7 @@ class TestExecuteTaskSuccess:
             ) as mock_build,
             patch("repolens.ai.executor.RepolensClient") as MockClient,
         ):
-            MockClient.return_value.complete.return_value = ("text", 10, 5)
+            MockClient.return_value.complete.return_value = _cr("text", 10, 5)
             execute_task(db_conn, repo_id, "ask", "task desc", token_budget=8000)
 
         _, call_kwargs = mock_build.call_args

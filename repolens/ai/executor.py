@@ -6,7 +6,7 @@ from repolens import config
 from repolens.ai.client import RepolensClient
 from repolens.ai.prompts import task_execution_prompt
 from repolens.context.packager import build_context
-from repolens.context.token_counter import estimate_cost
+from repolens.context.token_counter import estimate_cost_detailed
 from repolens.db.repository import create_run, update_run
 
 
@@ -52,18 +52,24 @@ def execute_task(
         prompt = task_execution_prompt(bundle.content, task_description)
 
         client = RepolensClient()
-        text, prompt_tokens, completion_tokens = client.complete(
-            prompt, model=resolved_model
-        )
+        result = client.complete(prompt, model=resolved_model)
 
-        cost = estimate_cost(prompt_tokens, completion_tokens, resolved_model)
+        cost = estimate_cost_detailed(
+            input_tokens=result.input_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            output_tokens=result.output_tokens,
+            model=resolved_model,
+        )
         update_run(
             conn,
             run_id,
             status="done",
-            result=text,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
+            result=result.text,
+            prompt_tokens=result.input_tokens,
+            completion_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
             cost_usd=cost,
         )
 
@@ -73,7 +79,9 @@ def execute_task(
 
     return {
         "run_id": run_id,
-        "result": text,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        "result": result.text,
+        "prompt_tokens": result.input_tokens,
+        "completion_tokens": result.output_tokens,
+        "cache_read_tokens": result.cache_read_tokens,
+        "cache_creation_tokens": result.cache_creation_tokens,
     }

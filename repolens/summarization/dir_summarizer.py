@@ -38,7 +38,7 @@ def summarize_directory(
         file_summaries: Mapping of relative file path -> summary text for
                         files in this directory. Used to build the prompt.
         client:         A RepolensClient (or compatible mock). Must expose
-                        .complete(prompt) -> (str, int, int) and .model.
+                        .complete(prompt) -> CompletionResult and .model.
 
     Returns:
         The summary text (2-3 sentences from the AI, or the cached copy).
@@ -61,7 +61,7 @@ def summarize_directory(
     # ------------------------------------------------------------------
     # 3. Call AI
     # ------------------------------------------------------------------
-    summary_text, prompt_tokens, completion_tokens = client.complete(prompt)
+    result = client.complete(prompt)
 
     # ------------------------------------------------------------------
     # 4. Store result
@@ -71,13 +71,13 @@ def summarize_directory(
         repo_id,
         "directory",
         dir_path,
-        summary_text,
+        result.text,
         model=client.model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
+        prompt_tokens=result.input_tokens,
+        completion_tokens=result.output_tokens,
     )
 
     # ------------------------------------------------------------------
     # 5. Return
     # ------------------------------------------------------------------
-    return summary_text
+    return result.text
