@@ -1,23 +1,21 @@
-"""Rules-based file classifier and importance scorer."""
+"""Rules-based file classifier.
+
+Importance scoring lives in :mod:`repolens.scoring.scorer`.  This module
+re-exports :func:`repolens.scoring.scorer.score_file` for backwards
+compatibility — new code should import from the scoring package directly.
+"""
 
 from __future__ import annotations
 
-import time
 from pathlib import PurePosixPath
+
+# Re-export for backwards compatibility with callers that imported
+# ``score_file`` from here historically.
+from repolens.scoring.scorer import score_file  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-_BASE_WEIGHTS: dict[str, float] = {
-    "core": 1.0,
-    "config": 0.8,
-    "test": 0.6,
-    "docs": 0.5,
-    "build": 0.3,
-    "generated": 0.0,
-    "other": 0.2,
-}
 
 _CORE_EXTENSIONS = frozenset(
     {".py", ".ts", ".js", ".go", ".rs", ".java", ".rb", ".swift", ".c", ".cpp", ".h"}
@@ -34,8 +32,6 @@ _CONFIG_FILENAMES = frozenset(
 )
 
 _GENERATED_SEGMENTS = frozenset({"__pycache__", "dist", "build", ".git"})
-
-_ENTRY_POINTS = frozenset({"main.py", "app.py", "index.py", "__init__.py"})
 
 
 # ---------------------------------------------------------------------------
@@ -102,50 +98,3 @@ def classify_file(relative_path: str, extension: str) -> str:
 
     # Rule 6: everything else
     return "other"
-
-
-# ---------------------------------------------------------------------------
-# score_file
-# ---------------------------------------------------------------------------
-
-
-def score_file(
-    relative_path: str,
-    category: str,
-    size_bytes: int,
-    mtime: int,
-) -> float:
-    """Compute an importance score in [0.0, 1.0] for a file.
-
-    Args:
-        relative_path: POSIX-style path relative to the repo root.
-        category: Result of :func:`classify_file` for this file.
-        size_bytes: File size in bytes.
-        mtime: Last-modified timestamp as a Unix epoch integer.
-
-    Returns:
-        A float in ``[0.0, 1.0]``.
-    """
-    score = _BASE_WEIGHTS.get(category, 0.2)
-
-    path = PurePosixPath(relative_path)
-    depth = len(path.parts) - 1  # directory depth
-
-    # Depth penalty: floor at 0.5 of original score
-    score *= max(0.5, 1.0 - 0.05 * depth)
-
-    # Size penalty
-    if size_bytes > 20_000:
-        score *= 0.8
-
-    # Recency bonus
-    now = int(time.time())
-    if mtime > (now - 7 * 86400):
-        score = min(1.0, score + 0.1)
-
-    # Entry-point boost
-    filename = path.name
-    if filename in _ENTRY_POINTS and depth == 0:
-        score = min(1.0, score + 0.2)
-
-    return round(score, 6)
