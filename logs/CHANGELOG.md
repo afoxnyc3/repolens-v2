@@ -100,3 +100,6 @@ FastAPI app skeleton. Lifespan runs init_db. /repos GET/POST, /repos/{id} GET, /
 ## 2026-04-16T16:26:43.516582+00:00 | T21 → done
 Added GET /repos/{id}/context (build + save bundle), POST /repos/{id}/run (sync via execute_task, SDK errors → 502), GET /runs/{id}, GET /runs (repo_id + limit filters). Added ContextOut, RunIn, RunOut pydantic models. 12 new tests covering success, 404, 422, 502, and limit validation. 339 tests pass overall.
 
+## 2026-04-16T21:24:07.379883+00:00 | T22 → done
+End-to-end smoke against real Anthropic API. Probe verified ADR-004 caching: 9906 cache_creation_tokens on warm-up, 9906 cache_read_tokens on second probe within TTL. Real run analyze cost $0.5415 (under $1 ceiling). smoke_test_output.md persisted at repo root. Empirical finding: claude-opus-4-7 cache-write threshold is well above the documented 1024-token minimum; client now uses 2048 floor across all families.
+

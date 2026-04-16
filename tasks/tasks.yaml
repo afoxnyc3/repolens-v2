@@ -514,7 +514,7 @@ tasks:
   - repolens/api/main.py
 - id: T22
   title: End-to-end smoke test on a real repo
-  status: todo
+  status: done
   depends_on:
   - T19
   - T21
