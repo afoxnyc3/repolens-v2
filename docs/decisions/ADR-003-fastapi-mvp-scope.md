@@ -1,7 +1,7 @@
 # ADR-003: FastAPI Layer — Include in MVP or Defer
 
 **Date:** 2026-04-15
-**Status:** Accepted
+**Status:** Superseded by [ADR-007](ADR-007-fastapi-un-defer.md) (2026-04-16)
 **Decider:** Clarke (reviewed from architect recommendation)
 
 ---
