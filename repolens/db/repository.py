@@ -162,6 +162,22 @@ def upsert_file(
             return existing["id"]
 
 
+# Whitelist of values accepted by list_files(order_by=...).  The ORDER BY
+# fragment is interpolated into SQL, so anything not in this set is rejected.
+_ALLOWED_FILE_ORDER: frozenset[str] = frozenset(
+    {
+        "id", "id ASC", "id DESC",
+        "path", "path ASC", "path DESC",
+        "extension", "extension ASC", "extension DESC",
+        "size_bytes", "size_bytes ASC", "size_bytes DESC",
+        "mtime", "mtime ASC", "mtime DESC",
+        "classification", "classification ASC", "classification DESC",
+        "importance_score", "importance_score ASC", "importance_score DESC",
+        "token_estimate", "token_estimate ASC", "token_estimate DESC",
+    }
+)
+
+
 def list_files(
     conn: sqlite3.Connection,
     repo_id: int,
@@ -172,14 +188,20 @@ def list_files(
     Args:
         conn:      Open SQLite connection.
         repo_id:   Filter to this repo.
-        order_by:  SQL ORDER BY fragment (default: importance_score DESC).
+        order_by:  SQL ORDER BY fragment. Must be in :data:`_ALLOWED_FILE_ORDER`;
+                   otherwise :class:`ValueError` is raised.  This guards against
+                   SQL injection when ``order_by`` ever flows from a caller
+                   outside this module (e.g. an HTTP query parameter).
 
     Returns:
         List of plain dicts, one per file row.
+
+    Raises:
+        ValueError: if ``order_by`` is not an allowed column/direction pair.
     """
+    if order_by not in _ALLOWED_FILE_ORDER:
+        raise ValueError(f"invalid order_by: {order_by!r}")
     _ensure_row_factory(conn)
-    # order_by is not user-supplied in prod paths; whitelist in tests would be
-    # over-engineering. Keep simple — it is an internal API.
     rows = conn.execute(
         f"SELECT * FROM files WHERE repo_id = ? ORDER BY {order_by}",
         (repo_id,),
@@ -424,8 +446,9 @@ def update_run(conn: sqlite3.Connection, run_id: int, **fields: Any) -> None:
         raise ValueError("update_run requires at least one field to update")
 
     allowed = {
-        "bundle_id", "prompt_tokens", "completion_tokens", "cost_usd",
-        "result", "status", "error_message", "completed_at",
+        "bundle_id", "prompt_tokens", "completion_tokens",
+        "cache_read_tokens", "cache_creation_tokens",
+        "cost_usd", "result", "status", "error_message", "completed_at",
     }
     update = {k: v for k, v in fields.items() if k in allowed}
 
