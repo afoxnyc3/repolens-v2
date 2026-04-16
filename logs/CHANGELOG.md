@@ -88,3 +88,15 @@ classify command wired to classifier.py/score_file; resolves repo by int ID or p
 ## 2026-04-15T18:10:38.833883+00:00 | T17 → done
 executor.py built. Fixed: engineer imported get_run which was missing from repository.py — added it. Run lifecycle (running → done/failed) verified. Error path tested. 296 tests passing.
 
+## 2026-04-16T16:17:35.528780+00:00 | T20 → in_progress
+
+
+## 2026-04-16T16:19:34.715856+00:00 | T20 → done
+FastAPI app skeleton. Lifespan runs init_db. /repos GET/POST, /repos/{id} GET, /repos/{id}/scan POST, /repos/{id}/classify POST. Per-request sqlite dependency with FK enforcement. Pydantic response_models. 17 new tests (test_api.py); 327 tests pass overall.
+
+## 2026-04-16T16:25:00.594886+00:00 | T21 → in_progress
+
+
+## 2026-04-16T16:26:43.516582+00:00 | T21 → done
+Added GET /repos/{id}/context (build + save bundle), POST /repos/{id}/run (sync via execute_task, SDK errors → 502), GET /runs/{id}, GET /runs (repo_id + limit filters). Added ContextOut, RunIn, RunOut pydantic models. 12 new tests covering success, 404, 422, 502, and limit validation. 339 tests pass overall.
+
