@@ -1,5 +1,0 @@
-{
-  "task_id": "T08",
-  "summary": "classify command wired to classifier.py/score_file; resolves repo by int ID or path; upserts classification+importance_score per file; prints category counts + top 5 by score",
-  "at": "2026-04-15T16:43:50.174040+00:00"
-}

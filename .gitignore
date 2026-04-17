@@ -19,8 +19,7 @@ build/
 .coverage
 htmlcov/
 .DS_Store
-logs/*.log
 smoke_test_output.md
 .venv/
-.context_snapshot.json
 .claude/scheduled_tasks.lock
+repolens.egg-info/

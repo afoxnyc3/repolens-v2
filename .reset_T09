@@ -1,5 +1,0 @@
-{
-  "task_id": "T09",
-  "summary": "Implemented RepolensClient in repolens/ai/client.py. Reads ANTHROPIC_API_KEY (ValueError if missing), REPOLENS_MODEL (default claude-opus-4-5), REPOLENS_MAX_TOKENS (default 4096). complete() returns (str, int, int). 16 tests, all mocked, no real API calls. Full suite 63/63.",
-  "at": "2026-04-15T12:41:11.586418+00:00"
-}

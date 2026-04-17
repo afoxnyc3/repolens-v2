@@ -1,5 +1,0 @@
-{
-  "task_id": "T03",
-  "summary": "Implemented all 12 repository functions. PATCH semantics on upserts (merge fields, keep existing). file_paths JSON-serialised in bundles. update_run auto-sets completed_at on terminal status. list_runs ORDER BY created_at DESC, id DESC for deterministic ordering on same-second inserts. 62 tests passing.",
-  "at": "2026-04-15T15:28:02.066640+00:00"
-}

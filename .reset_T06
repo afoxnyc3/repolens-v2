@@ -1,5 +1,0 @@
-{
-  "task_id": "T06",
-  "summary": "ingest and list commands implemented; ingest on this repo: 60 files scanned, 6224 skipped (binary/oversized/gitignored); idempotent on re-run",
-  "at": "2026-04-15T16:01:34.948228+00:00"
-}
