@@ -22,7 +22,7 @@ instead of ad-hoc copy-paste.
 
 - [README.md](README.md) — install, env vars, quickstart, CLI + API reference.
 - [DESIGN.md](DESIGN.md) — architecture, module responsibilities, data model.
-- [spec.md](spec.md) — product-level capabilities and explicit non-goals.
+- [docs/spec.md](docs/spec.md) — product-level capabilities and explicit non-goals.
 - [docs/decisions/DECISION-LOG.md](docs/decisions/DECISION-LOG.md) — ADR index.
   - [ADR-004](docs/decisions/ADR-004-prompt-caching.md) — prompt caching; empirical 2048-token cache-write floor.
   - [ADR-005](docs/decisions/ADR-005-tokenizer.md) — tiktoken default, opt-in native via `REPOLENS_ACCURATE_TOKENS`.
