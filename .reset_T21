@@ -1,5 +1,0 @@
-{
-  "task_id": "T21",
-  "summary": "FastAPI /context + /run + /runs endpoints wired through build_context, save_bundle, execute_task; synchronous run execution with 502 mapping for SDK failures.",
-  "at": "2026-04-16T16:26:43.565731+00:00"
-}

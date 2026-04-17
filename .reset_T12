@@ -1,5 +1,0 @@
-{
-  "task_id": "T12",
-  "summary": "dir_summarizer and repo_summarizer implemented with cache hit/miss. 55 tests passing (28 new). Both functions accept dict[str,str] summaries block \u2014 T13 summarize CLI can call them directly.",
-  "at": "2026-04-15T16:36:22.153598+00:00"
-}

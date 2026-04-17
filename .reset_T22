@@ -1,5 +1,0 @@
-{
-  "task_id": "T22",
-  "summary": "T22 end-to-end smoke green: cache fires (9906 created \u2192 9906 read), cost $0.54, ADR-004 threshold corrected to 2048 tokens after empirical probe.",
-  "at": "2026-04-16T21:24:11.688261+00:00"
-}
