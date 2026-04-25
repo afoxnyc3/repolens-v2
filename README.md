@@ -146,9 +146,11 @@ The E2E smoke test (`tests/test_smoke_e2e.py`) runs the full pipeline against th
 
 ## Cost notes
 
-- Prompt caching is on by default. Summarize runs re-using the same instructions see ~85-95% input-cost reduction after the first pass warms the cache (5-minute TTL).
+- **First-pass `summarize --scope all` is the most expensive command.** Expect ~$3-5 on a small Python repo (~65 files); a synthetic smoke baseline of $0.54 covers a file subset, not full-repo summarization.
+- Prompt caching reduces `run` costs by ~75-85% on repeated calls within the 5-minute TTL (validated end-to-end).
+- Per-summarize-call system blocks may fall below the 2048-token cache-write floor (ADR-004); when this happens the `summarize` command prints `Prompt cache: inactive` so you can audit it.
 - `run --dry-run` previews token and USD cost before sending to the API.
-- Schema v2 logs `cache_read_tokens` / `cache_creation_tokens` per run so you can audit actual cache hit rates.
+- Schema v3 logs `cache_read_tokens` / `cache_creation_tokens` on both `runs` and `summaries` rows so you can audit actual cache hit rates at every scope.
 - Pricing table (`repolens/context/token_counter.py`) is updated at each release; see [ADR-006](docs/decisions/ADR-006-model-ids.md) for the policy.
 
 ---

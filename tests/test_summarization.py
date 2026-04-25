@@ -195,6 +195,16 @@ class TestCacheMiss:
         assert stored["prompt_tokens"] == 42
         assert stored["completion_tokens"] == 7
 
+    def test_stores_cache_token_counts(self, db, repo_dir):
+        file_record = _make_file_record(str(repo_dir))
+        client = _mock_client(cache_read_tokens=300, cache_creation_tokens=2100)
+
+        summarize_file(db, 1, file_record, client)
+
+        stored = get_summary(db, 1, "file", "main.py")
+        assert stored["cache_read_tokens"] == 300
+        assert stored["cache_creation_tokens"] == 2100
+
     def test_stores_model_name(self, db, repo_dir):
         file_record = _make_file_record(str(repo_dir))
         client = _mock_client(model="claude-opus-4-5")

@@ -81,6 +81,20 @@ def get_repo(conn: sqlite3.Connection, id_or_path: int | str) -> dict | None:
     return _row(row)
 
 
+def get_repo_by_name(conn: sqlite3.Connection, name: str) -> dict | None:
+    """Fetch a single repo by human-readable name.
+
+    Names are not unique by schema, but in practice the CLI assigns them
+    from the path basename so collisions are rare. Returns the first match
+    by ascending id when duplicates exist.
+    """
+    _ensure_row_factory(conn)
+    row = conn.execute(
+        "SELECT * FROM repos WHERE name = ? ORDER BY id ASC LIMIT 1", (name,)
+    ).fetchone()
+    return _row(row)
+
+
 def list_repos(conn: sqlite3.Connection) -> list[dict]:
     """Return all repos ordered by created_at ascending.
 
@@ -228,7 +242,8 @@ def upsert_summary(
     fields are merged in (PATCH semantics).
 
     Supported extra fields:
-        model, content_hash, prompt_tokens, completion_tokens
+        model, content_hash, prompt_tokens, completion_tokens,
+        cache_read_tokens, cache_creation_tokens
 
     Args:
         conn:         Open SQLite connection.
@@ -243,7 +258,14 @@ def upsert_summary(
     """
     _ensure_row_factory(conn)
 
-    allowed = {"model", "content_hash", "prompt_tokens", "completion_tokens"}
+    allowed = {
+        "model",
+        "content_hash",
+        "prompt_tokens",
+        "completion_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+    }
     extra = {k: v for k, v in fields.items() if k in allowed}
 
     existing = conn.execute(

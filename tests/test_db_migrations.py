@@ -104,6 +104,8 @@ class TestHasColumn:
     def test_detects_cache_columns_after_fresh_init(self, fresh_conn):
         assert _has_column(fresh_conn, "runs", "cache_read_tokens")
         assert _has_column(fresh_conn, "runs", "cache_creation_tokens")
+        assert _has_column(fresh_conn, "summaries", "cache_read_tokens")
+        assert _has_column(fresh_conn, "summaries", "cache_creation_tokens")
 
 
 # ---------------------------------------------------------------------------
@@ -220,13 +222,99 @@ class TestMigrateUpgrade:
 
 
 # ---------------------------------------------------------------------------
+# migrate — upgrade path (v2 → v3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def legacy_v2_conn(db_path: Path):
+    """Simulate a v2 database: runs has cache cols, summaries does not."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE repos (
+            id INTEGER PRIMARY KEY,
+            path TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            created_at INTEGER DEFAULT (unixepoch())
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE summaries (
+            id INTEGER PRIMARY KEY,
+            repo_id INTEGER NOT NULL,
+            scope TEXT NOT NULL,
+            target_path TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            model TEXT,
+            content_hash TEXT,
+            prompt_tokens INTEGER,
+            completion_tokens INTEGER,
+            created_at INTEGER DEFAULT (unixepoch()),
+            UNIQUE(repo_id, scope, target_path)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, "
+        "applied_at INTEGER DEFAULT (unixepoch()))"
+    )
+    with conn:
+        conn.execute("INSERT INTO schema_version (version) VALUES (2)")
+    yield conn
+    conn.close()
+
+
+class TestMigrateV3:
+    def test_v2_db_lacks_summary_cache_columns(self, legacy_v2_conn):
+        assert _current_version(legacy_v2_conn) == 2
+        assert not _has_column(legacy_v2_conn, "summaries", "cache_read_tokens")
+
+    def test_upgrade_adds_summary_cache_columns(self, legacy_v2_conn):
+        migrate(legacy_v2_conn, target=3)
+        assert _has_column(legacy_v2_conn, "summaries", "cache_read_tokens")
+        assert _has_column(legacy_v2_conn, "summaries", "cache_creation_tokens")
+
+    def test_upgrade_stamps_version_3(self, legacy_v2_conn):
+        migrate(legacy_v2_conn, target=3)
+        assert _current_version(legacy_v2_conn) == 3
+
+    def test_upgrade_preserves_existing_summaries(self, legacy_v2_conn):
+        with legacy_v2_conn:
+            legacy_v2_conn.execute(
+                "INSERT INTO repos (path, name) VALUES (?, ?)", ("/a", "a")
+            )
+            legacy_v2_conn.execute(
+                "INSERT INTO summaries (repo_id, scope, target_path, summary) "
+                "VALUES (1, 'file', 'a.py', 'old')"
+            )
+        migrate(legacy_v2_conn, target=3)
+        row = legacy_v2_conn.execute(
+            "SELECT summary, cache_read_tokens FROM summaries WHERE id = 1"
+        ).fetchone()
+        assert row["summary"] == "old"
+        assert row["cache_read_tokens"] == 0
+
+    def test_upgrade_is_idempotent(self, legacy_v2_conn):
+        migrate(legacy_v2_conn, target=3)
+        migrate(legacy_v2_conn, target=3)
+        rows = legacy_v2_conn.execute(
+            "SELECT version FROM schema_version ORDER BY version"
+        ).fetchall()
+        assert [r["version"] for r in rows] == [2, 3]
+
+
+# ---------------------------------------------------------------------------
 # MIGRATIONS registry hygiene
 # ---------------------------------------------------------------------------
 
 
-def test_migrations_registry_has_v2():
-    assert 2 in MIGRATIONS
-    assert callable(MIGRATIONS[2])
+def test_migrations_registry_has_v2_and_v3():
+    assert 2 in MIGRATIONS and callable(MIGRATIONS[2])
+    assert 3 in MIGRATIONS and callable(MIGRATIONS[3])
 
 
 def test_migrations_keys_are_sequential_positive_ints():

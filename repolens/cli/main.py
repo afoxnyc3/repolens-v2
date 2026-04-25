@@ -21,6 +21,7 @@ from repolens.db.connection import open_conn
 from repolens.db.repository import (
     create_repo,
     get_repo,
+    get_repo_by_name,
     list_files,
     list_repos as db_list_repos,
     list_runs as db_list_runs,
@@ -190,10 +191,10 @@ def scan(
 
 
 def _resolve_repo(conn: sqlite3.Connection, repo: str) -> dict:
-    """Resolve a repo argument (int ID, name, or path) to a repo row.
+    """Resolve a repo argument (int ID, path, or name) to a repo row.
 
-    Tries integer ID first, then falls back to path/name lookup via get_repo.
-    Exits with an error message if not found.
+    Lookup order: integer ID, exact path, then name. Exits with an error
+    message if no match.
     """
     # Try int ID
     try:
@@ -202,9 +203,13 @@ def _resolve_repo(conn: sqlite3.Connection, repo: str) -> dict:
     except ValueError:
         row = None
 
-    # Fall back to path/name lookup
+    # Try path
     if row is None:
         row = get_repo(conn, repo)
+
+    # Try name (the README quickstart uses the basename)
+    if row is None:
+        row = get_repo_by_name(conn, repo)
 
     if row is None:
         typer.echo(f"Error: repository not found: {repo!r}", err=True)
@@ -418,6 +423,11 @@ def summarize(
                     f"Prompt cache: {total_cache_read} read"
                     f" + {total_cache_creation} created"
                 )
+            else:
+                typer.echo(
+                    "Prompt cache: inactive "
+                    "(per-call system block under the 2048-token floor — see ADR-004)"
+                )
             typer.echo(f"Estimated cost: ${cost:.4f}")
         else:
             typer.echo("\nNo API calls made (all summaries served from cache).")
@@ -580,11 +590,11 @@ def status(
         summary_count = len(file_summaries)
         coverage_pct = (summary_count / total_files * 100) if total_files > 0 else 0.0
 
-        # Last scan time (max mtime from files table)
-        max_mtime = max((f.get("mtime") or 0 for f in files), default=0)
+        # Last scan time (from repos.last_scanned_at — same source as `list`)
+        last_scanned_at = repo_row.get("last_scanned_at")
         last_scan = (
-            datetime.fromtimestamp(max_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            if max_mtime
+            datetime.fromtimestamp(last_scanned_at).strftime("%Y-%m-%d %H:%M:%S")
+            if last_scanned_at
             else "never"
         )
     finally:

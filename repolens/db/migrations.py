@@ -50,8 +50,25 @@ def _upgrade_to_v2(conn: sqlite3.Connection) -> None:
         )
 
 
+def _upgrade_to_v3(conn: sqlite3.Connection) -> None:
+    """v2 → v3: add cache-token accounting columns to ``summaries``.
+
+    Mirrors the v2 columns added to ``runs`` so the summarization path
+    can persist its own cache hit/miss accounting per record.
+    """
+    if not _has_column(conn, "summaries", "cache_read_tokens"):
+        conn.execute(
+            "ALTER TABLE summaries ADD COLUMN cache_read_tokens INTEGER DEFAULT 0"
+        )
+    if not _has_column(conn, "summaries", "cache_creation_tokens"):
+        conn.execute(
+            "ALTER TABLE summaries ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0"
+        )
+
+
 MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     2: _upgrade_to_v2,
+    3: _upgrade_to_v3,
 }
 
 
