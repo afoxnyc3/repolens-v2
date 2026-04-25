@@ -498,6 +498,14 @@ class TestDirectorySummarizerCacheMiss:
         assert stored["prompt_tokens"] == 30
         assert stored["completion_tokens"] == 12
 
+    def test_stores_cache_token_counts(self, db):
+        client = _mock_client(cache_read_tokens=400, cache_creation_tokens=2200)
+        summarize_directory(db, 1, "repolens/db", _DIR_FILE_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "directory", "repolens/db")
+        assert stored["cache_read_tokens"] == 400
+        assert stored["cache_creation_tokens"] == 2200
+
     def test_second_call_is_cache_hit(self, db):
         """After miss+store, subsequent call must hit cache."""
         client = _mock_client()
@@ -615,6 +623,14 @@ class TestRepoSummarizerCacheMiss:
         stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
         assert stored["prompt_tokens"] == 55
         assert stored["completion_tokens"] == 18
+
+    def test_stores_cache_token_counts(self, db):
+        client = _mock_client(cache_read_tokens=500, cache_creation_tokens=2300)
+        summarize_repo(db, 1, _REPO_DIR_SUMMARIES, client)
+
+        stored = get_summary(db, 1, "repo", _REPO_TARGET_PATH)
+        assert stored["cache_read_tokens"] == 500
+        assert stored["cache_creation_tokens"] == 2300
 
     def test_target_path_is_empty_string(self, db):
         """Repo summary must be stored under the empty-string target_path."""
