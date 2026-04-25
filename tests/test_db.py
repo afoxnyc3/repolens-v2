@@ -11,6 +11,7 @@ from repolens.db.schema import CURRENT_VERSION, get_schema_version, init_db
 from repolens.db.repository import (
     create_repo,
     get_repo,
+    get_repo_by_name,
     list_repos,
     upsert_file,
     list_files,
@@ -333,6 +334,27 @@ def test_get_repo_by_path(conn: sqlite3.Connection) -> None:
 def test_get_repo_missing_returns_none(conn: sqlite3.Connection) -> None:
     assert get_repo(conn, 9999) is None
     assert get_repo(conn, "/not/there") is None
+
+
+def test_get_repo_by_name_returns_match(conn: sqlite3.Connection) -> None:
+    create_repo(conn, "/repos/proj_a", "proj_a")
+    row = get_repo_by_name(conn, "proj_a")
+    assert row is not None
+    assert row["path"] == "/repos/proj_a"
+
+
+def test_get_repo_by_name_missing_returns_none(conn: sqlite3.Connection) -> None:
+    assert get_repo_by_name(conn, "nope") is None
+
+
+def test_get_repo_by_name_returns_lowest_id_on_collision(
+    conn: sqlite3.Connection,
+) -> None:
+    first = create_repo(conn, "/repos/dup_a", "shared")
+    create_repo(conn, "/repos/dup_b", "shared")
+    row = get_repo_by_name(conn, "shared")
+    assert row is not None
+    assert row["id"] == first
 
 
 def test_get_repo_returns_plain_dict(conn: sqlite3.Connection) -> None:

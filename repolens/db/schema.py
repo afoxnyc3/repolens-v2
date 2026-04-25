@@ -15,7 +15,7 @@ from repolens.db.migrations import migrate
 # Schema version tracked in schema_version table
 # ---------------------------------------------------------------------------
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -51,16 +51,18 @@ _CREATE_TABLES: list[str] = [
     """,
     """
     CREATE TABLE IF NOT EXISTS summaries (
-        id                INTEGER PRIMARY KEY,
-        repo_id           INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-        scope             TEXT    NOT NULL,
-        target_path       TEXT    NOT NULL,
-        summary           TEXT    NOT NULL,
-        model             TEXT,
-        content_hash      TEXT,
-        prompt_tokens     INTEGER,
-        completion_tokens INTEGER,
-        created_at        INTEGER DEFAULT (unixepoch()),
+        id                    INTEGER PRIMARY KEY,
+        repo_id               INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+        scope                 TEXT    NOT NULL,
+        target_path           TEXT    NOT NULL,
+        summary               TEXT    NOT NULL,
+        model                 TEXT,
+        content_hash          TEXT,
+        prompt_tokens         INTEGER,
+        completion_tokens     INTEGER,
+        cache_read_tokens     INTEGER DEFAULT 0,
+        cache_creation_tokens INTEGER DEFAULT 0,
+        created_at            INTEGER DEFAULT (unixepoch()),
         UNIQUE(repo_id, scope, target_path)
     )
     """,

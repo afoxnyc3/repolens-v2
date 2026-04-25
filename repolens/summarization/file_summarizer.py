@@ -176,6 +176,8 @@ def summarize_file(
         model=client.model,
         prompt_tokens=result.input_tokens,
         completion_tokens=result.output_tokens,
+        cache_read_tokens=result.cache_read_tokens,
+        cache_creation_tokens=result.cache_creation_tokens,
     )
 
     # ------------------------------------------------------------------
