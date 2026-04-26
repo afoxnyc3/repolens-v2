@@ -52,7 +52,7 @@ repo → ingestion → classification → scoring → summarization
 - Context generation (markdown or JSON).
 - Task templates: `analyze`, `summarize`, `refactor-prep`.
 - Synchronous AI runs; full cache-aware cost accounting in `runs` table.
-- SQLite schema v2 with migration runner.
+- SQLite schema v3 with migration runner.
 
 ## Explicit Non-Goals
 
