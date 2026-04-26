@@ -1,9 +1,9 @@
-![Repolens Banner](docs/banner.png)
+![Repolens Banner](docs/banner.jpeg)
 
 # Repolens v2
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-TBD-lightgrey.svg)](#license)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Powered by Anthropic Claude](https://img.shields.io/badge/Powered%20by-Anthropic%20Claude-D4733E.svg)](https://www.anthropic.com)
 
 AI-native repo intelligence. Ingests a local git repository, classifies and scores every file, builds token-budgeted context bundles, and runs Anthropic Claude tasks against that context — from a Python CLI or a thin FastAPI layer. Local-first, single SQLite file, no cloud, no auth.
@@ -183,4 +183,4 @@ The E2E smoke test (`tests/test_smoke_e2e.py`) runs the full pipeline against th
 
 ## License
 
-TBD (private MVP).
+MIT — see [LICENSE](LICENSE).
