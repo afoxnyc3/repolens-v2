@@ -14,7 +14,7 @@ access in the project goes through this package.
   `ValueError`. Any future function that interpolates a SQL fragment
   must use the same whitelist pattern.
 
-- **`schema_version` is the migration gate.** `CURRENT_VERSION = 2`
+- **`schema_version` is the migration gate.** `CURRENT_VERSION = 3`
   (see `schema.py`). Fresh DBs are stamped directly to
   `CURRENT_VERSION` after the latest `_CREATE_TABLES` runs; existing
   DBs bridge forward through the `migrations.py` ladder.

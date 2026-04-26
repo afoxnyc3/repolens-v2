@@ -31,11 +31,16 @@ Every summarizer caches its output in SQLite, keyed by content hash.
   cache until `--force` or an explicit regenerate. Known limitation;
   workaround is `repolens summarize --force --scope dir` (or `repo`).
 
-- **Prompt caching is active by default.** Every summarizer's system
-  block is identical across calls within a scope, so after the first
-  call in a summarize run the rest are cache hits — subject to the
-  2048-token floor documented in ADR-004 and `repolens/ai/CLAUDE.md`.
-  Small system blocks silently skip caching.
+- **Prompt caching is active by default, but rarely fires for the
+  user-facing summarize path in practice.** Per-call system blocks for
+  file/dir/repo summarization fall under the 2048-token cache-write
+  floor (ADR-004), so the typical full-repo `summarize --scope all`
+  pays full input cost at every call. The CLI surfaces this honestly:
+  when both `cache_read_tokens` and `cache_creation_tokens` are zero
+  across a run, `summarize` prints `Prompt cache: inactive (...)`.
+  Cache fields are persisted per-summary in schema v3 so this is
+  auditable from `summaries.cache_*` as well as the run-level
+  `runs.cache_*` columns.
 
 ## Editing guidance
 

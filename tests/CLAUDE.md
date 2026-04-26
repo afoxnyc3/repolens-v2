@@ -1,6 +1,6 @@
 # tests — agent brief
 
-Flat pytest layout. 401 unit tests + 1 e2e smoke as of 2026-04-17.
+Flat pytest layout. 412 unit tests + 1 e2e smoke as of 2026-04-26.
 
 ## Test layout
 

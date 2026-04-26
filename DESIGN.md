@@ -172,18 +172,20 @@ CREATE TABLE files (
     UNIQUE(repo_id, path)
 );
 
--- Cached summaries (file, directory, repo scope)
+-- Cached summaries (file, directory, repo scope — schema v3 cache columns)
 CREATE TABLE summaries (
-    id           INTEGER PRIMARY KEY,
-    repo_id      INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-    scope        TEXT    NOT NULL,  -- file|directory|repo
-    target_path  TEXT    NOT NULL,  -- relative path; empty string for repo scope
-    summary      TEXT    NOT NULL,
-    model        TEXT,
-    content_hash TEXT,              -- source hash at time of generation
-    prompt_tokens    INTEGER,
-    completion_tokens INTEGER,
-    created_at   INTEGER DEFAULT (unixepoch()),
+    id                    INTEGER PRIMARY KEY,
+    repo_id               INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    scope                 TEXT    NOT NULL,  -- file|directory|repo
+    target_path           TEXT    NOT NULL,  -- relative path; empty string for repo scope
+    summary               TEXT    NOT NULL,
+    model                 TEXT,
+    content_hash          TEXT,              -- source hash at time of generation
+    prompt_tokens         INTEGER,
+    completion_tokens     INTEGER,
+    cache_read_tokens     INTEGER DEFAULT 0, -- v3: mirrors runs.cache_read_tokens
+    cache_creation_tokens INTEGER DEFAULT 0, -- v3: mirrors runs.cache_creation_tokens
+    created_at            INTEGER DEFAULT (unixepoch()),
     UNIQUE(repo_id, scope, target_path)
 );
 

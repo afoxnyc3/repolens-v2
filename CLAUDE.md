@@ -12,8 +12,8 @@ instead of ad-hoc copy-paste.
 
 ## Status
 
-- Default model: `claude-opus-4-7`, prompt caching on, SQLite schema v2.
-- 401 unit + 1 e2e tests green on `main`.
+- Default model: `claude-opus-4-7`, prompt caching on, SQLite schema v3.
+- 412 unit + 1 e2e tests green on `main`.
 
 ---
 

@@ -9,7 +9,7 @@ Built to replace the pattern of pasting entire codebases into chat windows.
 ## Status
 
 - Roadmap: 22 tasks, all done.
-- Schema version 2 (cache-aware run accounting).
+- Schema version 3 (cache-aware run + summary accounting).
 - Default model: `claude-opus-4-7`.
 - Prompt caching enabled by default for system-block prefixes over the model family threshold.
 
