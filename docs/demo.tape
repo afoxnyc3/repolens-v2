@@ -46,7 +46,7 @@ Show
 # --- 2. Ingest a real repo ------------------------------------------------
 Type "# Scan a local repo into a single SQLite file"
 Enter
-Type "repolens ingest /Users/alex/dev/projects/repolens_v2_repo"
+Type "repolens ingest ."
 Enter
 Sleep 2000ms
 
