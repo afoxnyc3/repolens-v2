@@ -1,4 +1,10 @@
+![Repolens Banner](docs/banner.png)
+
 # Repolens v2
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-TBD-lightgrey.svg)](#license)
+[![Powered by Anthropic Claude](https://img.shields.io/badge/Powered%20by-Anthropic%20Claude-D4733E.svg)](https://www.anthropic.com)
 
 AI-native repo intelligence. Ingests a local git repository, classifies and scores every file, builds token-budgeted context bundles, and runs Anthropic Claude tasks against that context — from a Python CLI or a thin FastAPI layer. Local-first, single SQLite file, no cloud, no auth.
 
@@ -12,6 +18,18 @@ Built to replace the pattern of pasting entire codebases into chat windows.
 - Schema version 3 (cache-aware run + summary accounting).
 - Default model: `claude-opus-4-7`.
 - Prompt caching enabled by default for system-block prefixes over the model family threshold.
+
+---
+
+## Why Repolens?
+
+| The Old Way | The Repolens Way |
+|---|---|
+| Paste whole codebases into chat — expensive, lossy, context blown | Importance-scored files packed inside a token budget *you* set |
+| Re-pay for the same tokens every conversation | Prompt caching reduces repeat `run` input cost ~75-85% (validated end-to-end) |
+| Guess what files matter; forget the one that does | Deterministic rules + scoring; same inputs → same bundle |
+| Cost is invisible until the bill arrives | Every run logs tokens + USD; `--dry-run` previews before you spend |
+| Conversation-shaped, not reproducible | CLI + SQLite audit trail; a teammate can replay your exact context |
 
 ---
 
@@ -65,6 +83,14 @@ repolens run my-project --task analyze --description "what does this repo do?"
 # Inspect recent runs.
 repolens runs my-project --limit 5
 ```
+
+---
+
+## Demo
+
+![CLI Demo](docs/demo.gif)
+
+End-to-end run on a small Python repo: ingest → classify → summarize → context → run, with cache and cost accounting visible at every step.
 
 ---
 
